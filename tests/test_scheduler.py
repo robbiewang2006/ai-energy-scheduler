@@ -262,6 +262,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             "wind",
             "nuclear",
             "natural_gas_fired",
+            "onsite_diesel",
         }
         self.assertEqual(set(sources), expected_sources)
         self.assertFalse(any(source.supply_type == "grid" for source in sources.values()))
@@ -279,11 +280,28 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         self.assertTrue(
             all(
                 prices[(source_id, f"2026-{month:02d}")].price is None
-                for source_id in expected_sources - {"onsite_solar"}
+                for source_id in expected_sources - {"onsite_solar", "nuclear"}
                 for month in range(1, 13)
             )
         )
-        self.assertTrue(all(factor.factor is None for factor in factors.values()))
+        self.assertEqual(
+            {source_id: factor.factor for source_id, factor in factors.items()},
+            {
+                "onsite_solar": 0.041,
+                "wind": 0.0115,
+                "nuclear": 0.059,
+                "natural_gas_fired": 0.440,
+                "onsite_diesel": 0.790,
+            },
+        )
+        self.assertTrue(
+            all(
+                factor.unit == "kgCO2e/kWh"
+                and factor.boundary == "lifecycle"
+                and factor.status == "assumption"
+                for factor in factors.values()
+            )
+        )
 
         with (root / "data" / "monthly_prices.csv").open(
             newline="", encoding="utf-8"
@@ -305,9 +323,47 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             row["status"] == "missing"
             for row in prices
             if row["month"].startswith("2026-")
-            and row["source_id"] != "onsite_solar"
+            and row["source_id"] not in {"onsite_solar", "nuclear"}
         ))
-        self.assertTrue(all(row["status"] == "missing" for row in factors))
+        self.assertTrue(all(row["status"] == "assumption" for row in factors))
+
+    def test_nuclear_price_is_a_constant_monthly_assumption(self):
+        path = Path(__file__).parent.parent / "data" / "monthly_prices.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            nuclear_prices = [
+                row for row in csv.DictReader(file)
+                if row["source_id"] == "nuclear"
+            ]
+
+        self.assertEqual(len(nuclear_prices), 12)
+        for month_number, row in enumerate(nuclear_prices, start=1):
+            with self.subTest(month=row["month"]):
+                self.assertEqual(row["month"], f"2026-{month_number:02d}")
+                self.assertEqual(float(row["price"]), 0.3932)
+                self.assertEqual(row["unit"], "RMB/kWh")
+                self.assertEqual(row["status"], "assumption")
+                self.assertIn("not independently verified", row["notes"])
+
+    def test_emission_factor_rows_preserve_deepseek_source_urls(self):
+        path = Path(__file__).parent.parent / "data" / "emission_factors.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            factors = {row["source_id"]: row for row in csv.DictReader(file)}
+
+        self.assertEqual(set(factors), {
+            "onsite_solar", "wind", "nuclear", "natural_gas_fired",
+            "onsite_diesel",
+        })
+        self.assertTrue(all(row["publisher"] == "DeepSeek" for row in factors.values()))
+        self.assertIn("nrel.gov", factors["natural_gas_fired"]["source_url"])
+        self.assertIn("energynewsbeat.co", factors["natural_gas_fired"]["source_url"])
+        self.assertIn("icef.go.jp", factors["onsite_diesel"]["source_url"])
+        self.assertIn("mendeley.com", factors["wind"]["source_url"])
+        self.assertIn("gridreadiness.com", factors["nuclear"]["source_url"])
+        self.assertIn("arxiv.org", factors["onsite_solar"]["source_url"])
+        self.assertIn(
+            "solarpanelsfordatacenters.co.uk",
+            factors["onsite_solar"]["source_url"],
+        )
 
 
 class MonthlyEnergyInputTests(unittest.TestCase):

@@ -7,17 +7,22 @@ values converted from 元/MWh to RMB/kWh; their provenance and method are
 recorded in each row, but they are not independently verified. The onsite-solar
 prices are unweighted averages of the user-provided Shandong, Shanxi, and
 Sichuan values, converted from RMB/MWh to RMB/kWh. They are not independently
-verified or Shanghai-specific. The 2025 aggregate estimated weighted fuel costs
-are recorded separately in `estimated_weighted_fuel_cost.csv`; their weighting
-method and geography are unspecified, so they are not source-specific dispatch
-prices. Source-specific prices for wind outside the provided 2025 series,
-nuclear, and natural-gas-fired electricity, and emissions factors for all
-listed sources, remain blank with `status=missing`; this is a missing-value
-marker, not zero. The official-site requests made for this
-change failed at DNS lookup, so no official source-derived numeric prices or
-factors could be verified. `source_config.csv` uses zero-capacity
-placeholders that must be replaced. This includes source-specific contract
-prices, diesel prices, and the underlying official emissions-factor table.
+verified or Shanghai-specific. Nuclear prices for 2026 are the user-provided
+0.3932 RMB/kWh assumption for every month, not independently verified. The
+2025 aggregate estimated weighted fuel costs are recorded separately in
+`estimated_weighted_fuel_cost.csv`; their weighting method and geography are
+unspecified, so they are not source-specific dispatch prices. Other
+source-specific prices remain blank with `status=missing`; this is a missing
+value marker, not zero.
+
+The lifecycle emissions values in `emission_factors.csv` were provided as
+general DeepSeek data and converted from gCO2e/kWh to kgCO2e/kWh. Their
+source URLs and conversions are recorded per row; they are assumptions and
+have not been independently verified. The diesel template uses the supplied
+electricity-output factor and is disabled until a source-specific capacity and
+price are configured. `source_config.csv` uses zero-capacity placeholders
+that must be replaced. The official sources and emissions references have not
+been independently verified.
 
 Start verification with:
 
