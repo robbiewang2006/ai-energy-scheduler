@@ -332,7 +332,11 @@ def main(argv=None):
         help="hourly input CSV (defaults to the built-in synthetic demo)",
     )
     args = parser.parse_args(argv)
-    inputs = load_hourly_inputs(args.input_csv) if args.input_csv else SYNTHETIC_INPUTS
+    inputs = (
+        load_hourly_inputs(args.input_csv)
+        if args.input_csv
+        else SYNTHETIC_INPUTS
+    )
 
     battery = Battery()
     output = Path("results")
