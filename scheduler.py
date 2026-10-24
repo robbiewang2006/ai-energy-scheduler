@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from pathlib import Path
-import argparse
 import csv
 import math
 
@@ -40,9 +39,6 @@ class SupplyShortage(ValueError):
 class PlacementFailure(ValueError):
     """A baseline heuristic could not place all requested job energy."""
 
-
-class InitializationFailure(ValueError):
-    """The optimizer could not find a supply-feasible initial schedule."""
 
 SYNTHETIC_INPUTS = load_energy_inputs(
     Path(__file__).resolve().parent / "examples" / "synthetic"
@@ -494,116 +490,9 @@ def write_csv(path, rows):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Schedule hourly compute jobs.")
-    parser.add_argument(
-        "--data-dir",
-        type=Path,
-        default=Path(__file__).resolve().parent / "examples" / "synthetic",
-        help="directory containing source_config.csv, hourly_availability.csv, "
-        "monthly_prices.csv, emission_factors.csv, and optionally "
-        "scenario_impacts.csv",
-    )
-    parser.add_argument(
-        "--scenario",
-        default="ordinary",
-        help="operating scenario from scenario_impacts.csv (default: ordinary)",
-    )
-    parser.add_argument("--carbon-weight", type=float, default=CARBON_PRICE_RMB_PER_KG)
-    parser.add_argument("--annual-demand-reference-kwh", type=float,
-                        default=ANNUAL_DEMAND_REFERENCE_KWH)
-    parser.add_argument("--learning-rate", type=float, default=1.0)
-    parser.add_argument("--max-iterations", type=int, default=100)
-    parser.add_argument("--tolerance", type=float, default=1e-7)
-    parser.add_argument("--finite-difference-step", type=float, default=1e-5)
-    parser.add_argument("--initialization",
-                        choices=["uniform", "random", "immediate", "greedy"],
-                        default="uniform")
-    parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--output-dir", type=Path, default=Path("results"))
-    args = parser.parse_args(argv)
-    inputs = load_energy_inputs(args.data_dir)
+    from mother import main as mother_main
 
-    from optimizer import optimize_schedule
-
-    battery = Battery()
-    output = args.output_dir
-    output.mkdir(parents=True, exist_ok=True)
-    summaries = []
-
-    strategies = [
-        ("immediate", False, 0.0),
-        ("price_aware", True, 0.0),
-        ("price_carbon_aware", True, args.carbon_weight),
-        ("gradient", None, args.carbon_weight),
-    ]
-
-    for name, smart, carbon_price in strategies:
-        try:
-            if name == "gradient":
-                schedule, history = optimize_schedule(
-                    JOBS, battery, inputs=inputs, scenario=args.scenario,
-                    carbon_weight=args.carbon_weight, learning_rate=args.learning_rate,
-                    max_iterations=args.max_iterations, tolerance=args.tolerance,
-                    initialization=args.initialization, seed=args.seed,
-                    finite_difference_step=args.finite_difference_step,
-                    annual_demand_reference_kwh=args.annual_demand_reference_kwh,
-                )
-                write_csv(output / "optimization_history.csv", history)
-                for entry in history:
-                    print(
-                        f"iteration={entry['iteration']} cost={entry['cost_rmb']:.6f} "
-                        f"emissions={entry['emissions_kg']:.6f} "
-                        f"score={entry['score_rmb']:.6f} "
-                        f"violation={entry['max_constraint_violation_kwh']:.3g} "
-                        f"status={entry['status']}"
-                    )
-            else:
-                schedule = build_schedule(
-                    JOBS, battery, smart=smart, carbon_price=carbon_price,
-                    inputs=inputs, scenario=args.scenario,
-                )
-            rows = dispatch(schedule, battery, inputs, args.scenario)
-        except (SupplyShortage, PlacementFailure, InitializationFailure) as error:
-            summaries.append({"strategy": name, "feasible": False, "status": str(error)})
-            continue
-        verify_schedule(JOBS, schedule, inputs)
-
-        for row in rows:
-            for job in JOBS:
-                row[f"job_{job.name}_kwh"] = schedule[job.name][row["hour"]]
-
-        summary = summarize(
-            name, rows, args.carbon_weight, args.annual_demand_reference_kwh
-        )
-        violation = constraint_violation(JOBS, schedule, rows, battery, inputs)
-        summary.update({
-            "max_constraint_violation_kwh": violation,
-            "feasible": violation <= 1e-6,
-            "status": "evaluated with original dispatch",
-        })
-        summaries.append(summary)
-        write_csv(output / f"{name}_hourly.csv", rows)
-
-    write_csv(output / "comparison.csv", summaries)
-
-    for result in summaries:
-        if not result["feasible"]:
-            print(f"{result['strategy']}: no feasible schedule returned: {result['status']}")
-            continue
-        print(
-            f"{result['strategy']:20s} "
-            f"cost={result['cost_rmb']:.2f} RMB | "
-            f"emissions={result['emissions_kg']:.2f} kg | "
-            f"score={result['score_rmb']:.2f} RMB | "
-            f"peak grid={result['peak_grid_kw']:.2f} kW"
-        )
-    by_name = {result["strategy"]: result for result in summaries}
-    greedy = by_name["price_carbon_aware"]
-    gradient = by_name["gradient"]
-    if greedy["feasible"] and gradient["feasible"]:
-        difference = gradient["score_rmb"] - greedy["score_rmb"]
-        print(f"Gradient minus greedy score: {difference:+.6f} RMB "
-              "(positive means gradient performed worse).")
+    mother_main(argv)
 
 
 if __name__ == "__main__":

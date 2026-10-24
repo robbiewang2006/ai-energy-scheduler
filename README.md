@@ -6,108 +6,41 @@ The default dataset is a small, explicitly hypothetical one-day scenario. It is
 not official data and is not silently used as source-derived information:
 
 ```bash
-python -m pip install -r requirements.txt
-python scheduler.py
+python mother.py
 # Or select it explicitly:
-python scheduler.py --data-dir examples/synthetic
+python mother.py --data-dir examples/synthetic
 ```
 
-The scheduler retains hourly job placement and dispatch. Input prices are
-monthly: each source/month row is identified by `YYYY-MM`, and every hour in
-that month uses the same configured price. Timestamps in the hourly data
-select the applicable month, including across December/January. Use a complete
-hourly horizon with one timestamp per hour.
+`mother.py` compares three hourly job-placement strategies: **immediate**,
+**price_aware** (greedy cost-only), and **price_carbon_aware** (greedy cost
+plus carbon). The greedy strategies evaluate the existing dispatch policy for
+candidate placements, including source prices, emissions, availability,
+dispatch order, and battery behavior. They are heuristics and do not guarantee
+a globally optimal schedule.
 
-## Constrained gradient scheduling
+Every strategy uses the same jobs, input bundle, scenario, fixed PUE, and
+initially empty battery. Comparison scores use the configured carbon weight,
+even for strategies that choose allocations using cost alone. The carbon
+penalty is an objective term, **not an electricity bill**. Direct CO2 and
+lifecycle CO2e accounting must not be mixed; dispatch rejects inconsistent
+used factors.
 
-The default run now compares **gradient**, **immediate**, **price_aware**
-(greedy cost-only), and **price_carbon_aware** (greedy cost plus carbon).
-Every strategy uses identical jobs, CSV inputs, scenario, fixed PUE, and an
-initially empty battery. All comparison scores use the same carbon weight,
-including strategies that choose their allocations using cost alone.
-NumPy and SciPy are the optimizer's numerical dependencies (Python 3.11+);
-the CSV loader and original dispatch accounting are retained.
+Input prices are monthly: each source/month row is identified by `YYYY-MM`,
+and every hour in that month uses the same configured price. Timestamps select
+the applicable month, including across December/January. Use a complete hourly
+horizon with one timestamp per hour.
 
-For flexible job allocations \(x_{j,t}\), the objective is
-
-\[
- S(x)=C(x)+w E(x),\qquad w=0.20\ \mathrm{RMB/kg}\ \text{by default}.
-\]
-
-Here \(C\) is electricity cost in RMB and \(E\) is emissions in kg under a
-consistent configured accounting boundary. The carbon penalty is an objective
-term, **not an electricity bill**. Direct CO2 and lifecycle CO2e accounting
-must not be mixed; the dispatch evaluator rejects inconsistent used factors.
-Source-specific monthly prices, fuel conversions, scenario multipliers, and
-price/emission metadata continue to come from the input bundle.
-
-The computing feasible set is
-
-\[
- x_{j,t}\ge0,\quad x_{j,t}=0\ (t\notin[r_j,d_j)),\quad
- \sum_t x_{j,t}=e_j,\quad
- p_t+\sum_j x_{j,t}\le35\ \mathrm{kW}.
-\]
-
-Each time step is one hour, so allocations in kWh correspond numerically to
-average kW. Protected IT demand \(p_t\) is unchanged and PUE stays fixed at 1.2.
-HiGHS first checks the **joint** computing constraints. Each gradient step is
-projected by solving the convex quadratic problem
-\(\min_{z\in\mathcal C}\frac12\|z-y\|^2\) with SLSQP, analytic projection
-derivatives, linear job equalities, shared hourly inequalities, and nonnegative
-bounds. This is not independent clipping. Projection failure is an error, not
-permission to return an incomplete job.
-
-### Gradients, feasibility, and stopping
-
-This is a small, dense prototype, not an annual-scale optimizer. The original
-`dispatch()` remains the evaluator: onsite solar first, solar-only charging,
-stateful battery discharge, then other sources in their configured priority
-order, with source power, availability and fuel limits. Every evaluation
-restarts the battery empty. No automatic differentiation or smoothing of this
-stateful, piecewise-linear model is assumed.
-
-Central finite differences use two dispatch evaluations per allocation. At a
-nonnegativity or supply boundary, an evaluable one-sided difference is used.
-If neither side is evaluable the partial is zero; that can stall and does not
-certify stationarity. Probes may temporarily violate computing constraints
-to estimate the dispatch function's partial derivatives, but accepted
-schedules must satisfy all computing constraints. Accounting errors are not
-treated as shortages or hidden by a penalty.
-
-Internally, allocations are divided by the maximum spare hourly IT capacity
-(at least 1 kWh), and the objective is divided by fixed facility energy
-(at least 1 kWh). The finite-difference step and learning rate operate in
-these scaled coordinates; reported costs and emissions remain unscaled.
-Backtracking halves the learning rate (up to 30 trials) until the original
-dispatch supplies the candidate and its score does not increase. Supply
-feasibility is checked at every trial, not approximated by a soft penalty.
-The best feasible schedule is retained.
-
-Initialization choices are projected uniform (default), seeded projected
-random, immediate, or greedy. The last two use the original baseline builders.
-A computing-feasible initialization may still fail original dispatch under
-an outage or fuel shortage. In that case the optimizer stops explicitly:
-**failure to initialize is not proof that no supply-feasible schedule exists**.
-Try another initialization. The greedy baseline skips supply-infeasible trial
-allocations, but can still fail to find a complete placement. Neither a failed
-heuristic nor a failed initialization proves global infeasibility. Baseline
-comparisons are still exported when gradient initialization fails.
-The prototype does not redesign supply
-dispatch or promise to find a feasible seed for every input.
-
-Stopping occurs at the iteration limit, failed backtracking, or when scaled
-maximum allocation movement or scaled score improvement is at most the
-convergence tolerance. Flat regions, nonsmooth boundaries and local optima
-are possible; there is **no global-optimality guarantee**. A positive printed
-“Gradient minus greedy score” means gradient descent performed worse.
+The default run uses the built-in 24-hour workload. A task CSV can be supplied
+with `--tasks-csv`; its columns are `task_id, urgency_level, start_time,
+deadline, energy_needed`. An empty deadline makes a task open-ended, and its
+urgency-weighted time penalty is configurable with
+`--time-penalty-per-kwh-per-day`.
 
 ```bash
-python scheduler.py --data-dir examples/synthetic --scenario ordinary \
-  --carbon-weight 0.20 --learning-rate 1.0 --max-iterations 100 \
-  --tolerance 1e-7 --finite-difference-step 1e-5 \
-  --initialization uniform --seed 0 --output-dir results
-python -m unittest discover -s tests -p test_optimizer.py
+python mother.py --data-dir examples/synthetic --scenario ordinary \
+  --carbon-weight 0.20 --time-penalty-per-kwh-per-day 0.5 \
+  --output-dir results
+python -m unittest discover -s tests -p test_mother.py
 python -m unittest discover -s tests
 ```
 
@@ -128,9 +61,9 @@ reference \(R=1{,}000{,}000{,}000\) kWh (1 TWh),
  a=R/F,\quad C_R=aC,\quad E_R=aE,\quad S_R=C_R+wE_R.
 \]
 
-`--annual-demand-reference-kwh` changes \(R\), not the workload, dispatch, or
-optimizer's internal objective scaling. `*_per_reference_*` columns use that
-configured value, while `*_per_1twh_*` columns always use exactly 1 TWh.
+`--annual-demand-reference-kwh` changes \(R\), not the workload or dispatch.
+`*_per_reference_*` columns use that configured value, while `*_per_1twh_*`
+columns always use exactly 1 TWh.
 Zero facility energy cannot be normalized. These are **normalized scenario
 metrics**, not a verified annual forecast: a 24-hour run remains a 24-hour
 simulation. Cross-month horizons use each timestamp's applicable monthly price.
@@ -140,19 +73,15 @@ The output directory contains:
 - `<strategy>_hourly.csv`: final job allocations and original dispatch,
   protected/facility demand, source use, battery flows/SOC, prices and factor
   metadata.
-- `optimization_history.csv`: initial and accepted iteration cost, emissions,
-  score, maximum constraint violation in kWh, feasibility, stopping status,
-  and number of supply-infeasible backtracking trials.
 - `comparison.csv`: separate raw cost, emissions and score; facility/grid
   energy; normalization factor and reference; normalized cost, emissions and
   score; simulation dates/hours; maximum constraint violation and feasibility.
   Failed baselines are explicitly marked, without fabricated metrics.
 
-Tests include joint job/window/capacity feasibility, original-dispatch supply
-balance and battery conservation, finite-difference checks in linear regions,
-seed reproducibility, normalization, invalid inputs, and a two-hour
-cross-month example compared with every integer allocation (whose cheapest
-endpoint is also the continuous optimum).
+Tests include job/window/capacity feasibility, original-dispatch supply balance
+and battery conservation, normalization, invalid inputs, greedy source/price
+choices, and a two-hour cross-month example compared with every integer
+allocation.
 
 ## Supply model and inputs
 
@@ -210,7 +139,7 @@ The battery retains its original solar-only charging behavior.
 Run a configured emergency case with:
 
 ```bash
-python scheduler.py --data-dir /tmp/my-energy-inputs --scenario grid_outage
+python mother.py --data-dir /tmp/my-energy-inputs --scenario grid_outage
 ```
 
 Scenario impacts do not assign source countries or dependency shares: set
@@ -228,7 +157,7 @@ Copy `examples/synthetic/` to a new directory, replace its values, and run:
 cp -R examples/synthetic /tmp/my-energy-inputs
 # Edit source_config.csv, monthly_prices.csv, hourly_availability.csv,
 # and emission_factors.csv, then:
-python scheduler.py --data-dir /tmp/my-energy-inputs
+python mother.py --data-dir /tmp/my-energy-inputs
 ```
 
 Use `data/` as a template for source-derived records; see

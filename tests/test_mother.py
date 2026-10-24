@@ -17,13 +17,16 @@ from frontier import (
     write_frontier_csv,
     write_frontier_svg,
 )
-from scheduler import (
+from mother import (
     Battery,
     JOBS,
     Job,
     SYNTHETIC_INPUTS,
     build_schedule,
     dispatch,
+    load_jobs_from_csv,
+    main,
+    time_penalty,
     verify_schedule,
 )
 
@@ -995,6 +998,38 @@ class MonthlyEnergyInputTests(unittest.TestCase):
         self.assertIn(">2024</text>", svg)
         self.assertIn(">2025</text>", svg)
         self.assertIn("Procurement cost (RMB for 0.1 MWh)", svg)
+
+
+class MotherEntryPointTests(unittest.TestCase):
+    def test_default_cli_runs_baselines_without_gradient_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            main(["--output-dir", directory])
+            with (Path(directory) / "comparison.csv").open(
+                newline="", encoding="utf-8"
+            ) as file:
+                results = list(csv.DictReader(file))
+
+            self.assertEqual(
+                [result["strategy"] for result in results],
+                ["immediate", "price_aware", "price_carbon_aware"],
+            )
+            self.assertTrue(all(result["feasible"] == "True" for result in results))
+            self.assertFalse((Path(directory) / "optimization_history.csv").exists())
+
+    def test_open_ended_csv_jobs_keep_urgency_time_penalty(self):
+        with tempfile.TemporaryDirectory() as directory:
+            task_file = Path(directory) / "tasks.csv"
+            task_file.write_text(
+                "task_id,urgency_level,start_time,deadline,energy_needed\n"
+                "open,3,0,,2\n",
+                encoding="utf-8",
+            )
+            jobs = load_jobs_from_csv(task_file)
+            self.assertEqual(jobs, [Job("open", 0, None, 2, 3)])
+            self.assertAlmostEqual(
+                time_penalty(jobs, {"open": [1, 1]}, time_weight=0.5),
+                0.5 / 8,
+            )
 
 
 if __name__ == "__main__":
