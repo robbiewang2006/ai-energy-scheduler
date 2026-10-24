@@ -186,6 +186,11 @@ class SolarMarketPriceDataTests(unittest.TestCase):
                 self.assertEqual(float(row["price"]), expected_price)
                 self.assertEqual(row["unit"], "RMB/kWh")
                 self.assertEqual(row["status"], "assumption")
+                self.assertEqual(
+                    row["source_url"],
+                    "https://github.com/user-attachments/assets/"
+                    "4f004c4d-fc7d-4211-8e4d-dab3ca01c130",
+                )
                 self.assertIn("weighting method not provided", row["method"])
                 self.assertIn("source-specific", row["notes"])
 
