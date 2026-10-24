@@ -4,7 +4,9 @@ import tempfile
 import unittest
 
 from energy_data import load_energy_inputs
+from energy_data import fuel_litres_to_electricity_kwh, fuel_price_rmb_per_kwh
 from frontier import (
+    calendar_year_frontiers,
     pareto_frontier,
     write_frontier_csv,
     write_frontier_svg,
@@ -36,6 +38,10 @@ SOURCE_FIELDS = [
 ]
 AVAILABILITY_FIELDS = [
     "timestamp", "source_id", "available_kwh", "protected_it_kw",
+]
+SCENARIO_IMPACT_FIELDS = [
+    "scenario", "source_id", "availability_multiplier", "price_multiplier",
+    "notes",
 ]
 TIMESTAMPS = ["2024-12-31T23:00:00", "2025-01-01T00:00:00"]
 GRID = {
@@ -110,6 +116,7 @@ def write_bundle(
     availability=None,
     prices=None,
     factors=None,
+    scenario_impacts=None,
 ):
     sources = sources or [GRID]
     months = sorted({timestamp[:7] for timestamp in timestamps})
@@ -124,6 +131,8 @@ def write_bundle(
         ]
     if factors is None:
         factors = [_factor_row(source, 0.5) for source in sources]
+    if scenario_impacts is None:
+        scenario_impacts = []
 
     def write(name, fields, rows):
         with (directory / name).open("w", newline="", encoding="utf-8") as file:
@@ -144,6 +153,7 @@ def write_bundle(
     write("hourly_availability.csv", AVAILABILITY_FIELDS, availability_rows)
     write("monthly_prices.csv", PRICE_FIELDS, prices)
     write("emission_factors.csv", FACTOR_FIELDS, factors)
+    write("scenario_impacts.csv", SCENARIO_IMPACT_FIELDS, scenario_impacts)
     return load_energy_inputs(directory)
 
 
@@ -325,8 +335,24 @@ class MonthlyEnergyInputTests(unittest.TestCase):
             sum(row["source_onsite_diesel_emissions_kg"] for row in rows), 10.72
         )
         self.assertAlmostEqual(
+            rows[0]["source_onsite_diesel_effective_price_rmb_per_kwh"], 2
+        )
+        self.assertAlmostEqual(
             sum(row["source_ordinary_grid_kwh"] for row in rows), 8
         )
+
+    def test_fuel_volume_converts_to_electricity_and_invalid_rates_fail(self):
+        self.assertEqual(fuel_litres_to_electricity_kwh(4, 0.25), 16)
+        self.assertEqual(fuel_price_rmb_per_kwh(8, 0.25), 2)
+        with self.assertRaisesRegex(ValueError, "consumption positive"):
+            fuel_litres_to_electricity_kwh(4, 0)
+
+    def test_scenario_file_is_optional_for_existing_input_bundles(self):
+        write_bundle(self.directory)
+        (self.directory / "scenario_impacts.csv").unlink()
+        inputs = load_energy_inputs(self.directory)
+        self.assertEqual(inputs.scenario_impacts, {})
+        self.assertEqual(len(dispatch({}, Battery(), inputs)), 2)
 
     def test_negative_diesel_consumption_is_rejected(self):
         diesel = {
@@ -428,6 +454,69 @@ class MonthlyEnergyInputTests(unittest.TestCase):
         coal_grid = dict(GRID, source_id="coal", technology="coal_fired")
         with self.assertRaisesRegex(ValueError, "Only ordinary_grid"):
             write_bundle(self.directory, sources=[coal_grid])
+
+    def test_grid_outage_uses_strategic_diesel_reserve(self):
+        diesel = {
+            "source_id": "diesel_reserve",
+            "technology": "diesel_generator",
+            "supply_type": "onsite",
+            "price_unit": "RMB/litre",
+            "max_power_kw": "20",
+            "dispatch_order": "100",
+            "fuel_consumption_l_per_kwh": "0.25",
+            "fuel_inventory_l": "6",
+        }
+        grid = dict(GRID, max_power_kw="100", dispatch_order="1")
+        inputs = write_bundle(
+            self.directory,
+            sources=[grid, diesel],
+            availability={"ordinary_grid": [100, 100], "diesel_reserve": [20, 20]},
+            scenario_impacts=[
+                {
+                    "scenario": "grid_outage",
+                    "source_id": "ordinary_grid",
+                    "availability_multiplier": "0",
+                    "price_multiplier": "1",
+                    "notes": "Grid unavailable; deploy reserve.",
+                },
+            ],
+        )
+        rows = dispatch({}, Battery(), inputs, scenario="grid_outage")
+        self.assertEqual(sum(row["grid_kwh"] for row in rows), 0)
+        self.assertAlmostEqual(
+            sum(row["source_diesel_reserve_kwh"] for row in rows), 24
+        )
+        with self.assertRaisesRegex(ValueError, "Unknown energy scenario"):
+            dispatch({}, Battery(), inputs, scenario="unconfigured")
+
+    def test_concentrated_gas_supply_shock_changes_only_configured_source(self):
+        gas = dict(
+            GRID,
+            source_id="gas_import",
+            technology="natural_gas_fired",
+            supply_type="contract",
+            max_power_kw="100",
+            dispatch_order="1",
+        )
+        grid = dict(GRID, dispatch_order="2")
+        inputs = write_bundle(
+            self.directory,
+            sources=[gas, grid],
+            availability={"gas_import": [12, 12], "ordinary_grid": [100, 100]},
+            scenario_impacts=[
+                {
+                    "scenario": "gas_supply_shock",
+                    "source_id": "gas_import",
+                    "availability_multiplier": "0.2",
+                    "price_multiplier": "1.5",
+                    "notes": "Illustrative shock for a concentrated import source.",
+                },
+            ],
+        )
+        rows = dispatch({}, Battery(), inputs, scenario="gas_supply_shock")
+        self.assertAlmostEqual(rows[0]["source_gas_import_kwh"], 2.4)
+        self.assertAlmostEqual(rows[0]["source_gas_import_cost_rmb"], 1.44)
+        self.assertAlmostEqual(rows[0]["source_ordinary_grid_kwh"], 9.6)
 
     def test_all_documented_electricity_technologies_are_configurable(self):
         technologies = [
@@ -643,6 +732,42 @@ class MonthlyEnergyInputTests(unittest.TestCase):
         self.assertIn("<svg", svg_content)
         self.assertIn("Average price (RMB/kWh)", svg_content)
         self.assertIn("Emissions (kgCO2/MWh)", svg_content)
+
+    def test_annual_frontier_plot_keeps_years_separate_and_ignores_scenarios(self):
+        inputs = write_bundle(
+            self.directory,
+            timestamps=["2024-12-31T23:00", "2025-01-01T00:00"],
+            prices=[
+                _price_row(GRID, "2024-12", 0.2),
+                _price_row(GRID, "2025-01", 0.7),
+            ],
+            scenario_impacts=[
+                {
+                    "scenario": "grid_outage",
+                    "source_id": "ordinary_grid",
+                    "availability_multiplier": "0",
+                    "price_multiplier": "10",
+                    "notes": "Should not affect annual procurement frontier.",
+                },
+            ],
+        )
+        points, unit = calendar_year_frontiers(inputs, target_mwh=0.1)
+        self.assertEqual(unit, "kgCO2/kWh")
+        self.assertEqual([point["year"] for point in points], [2024, 2025])
+        self.assertAlmostEqual(points[0]["avg_price_rmb_per_kwh"], 0.2)
+        self.assertAlmostEqual(points[1]["avg_price_rmb_per_kwh"], 0.7)
+        self.assertAlmostEqual(points[0]["cost_rmb"], 20)
+        self.assertAlmostEqual(points[1]["cost_rmb"], 70)
+
+        csv_path = self.directory / "annual_frontier.csv"
+        svg_path = self.directory / "annual_frontier.svg"
+        write_frontier_csv(csv_path, points, unit, include_year=True)
+        write_frontier_svg(svg_path, points, unit, 0.1, series_key="year")
+        self.assertIn("year,cost_rmb,energy_kwh", csv_path.read_text(encoding="utf-8"))
+        svg = svg_path.read_text(encoding="utf-8")
+        self.assertIn(">2024</text>", svg)
+        self.assertIn(">2025</text>", svg)
+        self.assertIn("Procurement cost (RMB for 0.1 MWh)", svg)
 
 
 if __name__ == "__main__":

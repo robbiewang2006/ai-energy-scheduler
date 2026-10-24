@@ -1,2 +1,2 @@
-energy_kwh,avg_price_rmb_per_kwh,emissions_kgCO2_per_MWh,mix,price_categories
-1000.0,0.43848,415.8,onsite_solar=24.4%; ordinary_grid=75.6%,onsite_solar: explicit_user_assumption; ordinary_grid: explicit_user_assumption
+year,cost_rmb,energy_kwh,avg_price_rmb_per_kwh,emissions_kgCO2_per_MWh,mix,price_categories
+2025,438.48,1000.0,0.43848,415.8,onsite_solar=24.4%; ordinary_grid=75.6%,onsite_solar: explicit_user_assumption; ordinary_grid: explicit_user_assumption

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from energy_data import load_energy_inputs
 from frontier import (
-    pareto_frontier,
+    calendar_year_frontiers,
     write_frontier_csv,
     write_frontier_svg,
 )
@@ -11,7 +11,7 @@ from frontier import (
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Plot feasible energy procurement options and their frontier."
+        description="Plot annual procurement frontiers (default target: 1 MWh)."
     )
     parser.add_argument(
         "--data-dir",
@@ -34,19 +34,23 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     inputs = load_energy_inputs(args.data_dir)
-    points, emission_unit = pareto_frontier(inputs, args.target_mwh)
+    points, emission_unit = calendar_year_frontiers(inputs, args.target_mwh)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     svg_path = args.output_dir / "emissions_price_frontier.svg"
     csv_path = args.output_dir / "emissions_price_frontier.csv"
-    write_frontier_svg(svg_path, points, emission_unit, args.target_mwh)
-    write_frontier_csv(csv_path, points, emission_unit)
+    write_frontier_svg(
+        svg_path, points, emission_unit, args.target_mwh, series_key="year"
+    )
+    write_frontier_csv(csv_path, points, emission_unit, include_year=True)
     print(
-        f"Wrote {len(points)} nondominated frontier point(s) for "
-        f"{args.target_mwh:g} MWh to {svg_path} and {csv_path}."
+        f"Wrote {len(points)} annual frontier point(s) for "
+        f"{args.target_mwh:g} MWh across "
+        f"{len({point['year'] for point in points})} year(s) to "
+        f"{svg_path} and {csv_path}."
     )
     for point in points:
         print(
-            f"{point['emissions_kg_per_mwh']:.3f} "
+            f"{point['year']} | {point['emissions_kg_per_mwh']:.3f} "
             f"{emission_unit.split('/')[0]}/MWh "
             f"| {point['avg_price_rmb_per_kwh']:.4f} RMB/kWh "
             f"| {point['mix']}"

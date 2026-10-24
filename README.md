@@ -19,7 +19,7 @@ hourly horizon with one timestamp per hour.
 
 ## Supply model and inputs
 
-The input directory has four CSV files:
+The input directory has four required CSV files plus an optional scenario file:
 
 - `source_config.csv`: configured source ID, technology, supply type, price
   unit, power capacity, dispatch order, and (for an onsite diesel generator)
@@ -38,6 +38,12 @@ The input directory has four CSV files:
 - `emission_factors.csv`: one factor per source with units, reference year,
   geography, and accounting boundary. Direct factors (`kgCO2/...`) and
   lifecycle factors (`kgCO2e/kWh`) cannot be mixed in a single objective.
+- `scenario_impacts.csv`: optional per-scenario, per-source multipliers for
+  available energy and price. Unlisted sources are unchanged; `ordinary` is the
+  implicit baseline. Set grid availability to zero for an outage, and model
+  import bottlenecks (including concentrated natural-gas supply) by reducing
+  affected sources' availability and/or increasing their price. Scenario values
+  are explicit assumptions, not automatic geopolitical forecasts.
 
 `supply_type` must be `onsite`, `contract`, or `grid`. The one
 `ordinary_grid` supply is distinct from source-specific contracted electricity
@@ -56,10 +62,26 @@ The example technology identifiers are `solar_pv`, `hydroelectric`, `nuclear`,
 
 Diesel prices remain in RMB/litre and are multiplied by the configured
 generator fuel rate (L/kWh); diesel emissions use kgCO2/litre and the same
-fuel rate. The model does not compare RMB/litre to electricity RMB/kWh, does
-not invent a universal generator consumption rate, and limits generation by
-both hourly availability/capacity and configured diesel inventory. The battery
-retains its original solar-only charging behavior.
+fuel rate. `fuel_litres_to_electricity_kwh()` converts reserve fuel volume to
+electric output using that generator-specific rate, and dispatch outputs the
+equivalent scenario-adjusted RMB/kWh price. The model does not invent a
+universal generator consumption rate and limits generation by hourly
+availability/capacity and configured diesel inventory. Give strategic reserves
+a later `dispatch_order` than normal supply so they are used only when needed.
+The battery retains its original solar-only charging behavior.
+
+Run a configured emergency case with:
+
+```bash
+python scheduler.py --data-dir /tmp/my-energy-inputs --scenario grid_outage
+```
+
+Scenario impacts do not assign source countries or dependency shares: set
+source-specific assumptions from verified procurement and supply-chain data.
+For example, a `gas_supply_shock` scenario can reduce availability for a
+Russian-origin gas contract while leaving other sources unchanged; a
+`hormuz_disruption` scenario can affect only sources whose documented supply
+routes are exposed.
 
 ## Replacing the example data
 
@@ -89,10 +111,10 @@ Outputs are written to `results/`. Run automated tests with:
 python -m unittest discover -s tests
 ```
 
-## 1 MWh cost-emissions frontier
+## Annual 1 MWh cost-emissions frontiers
 
-Plot feasible source mixes for 1 MWh, using source prices averaged across the
-hourly horizon and hourly availability summed over that horizon:
+Plot each calendar year's feasible source mixes for 1 MWh, using monthly
+prices and hourly availability from that year only:
 
 ```bash
 python plot_frontier.py
@@ -101,22 +123,26 @@ python plot_frontier.py --data-dir /tmp/my-energy-inputs --target-mwh 2
 ```
 
 The command writes `results/emissions_price_frontier.svg` and
-`results/emissions_price_frontier.csv`. It optimizes feasible source mixes and
-keeps only nondominated points; the line connects those frontier points. The
-CSV records each mix and its source price categories. Source/month rows with a
-missing price or source emission factor are omitted rather than assigned zero.
-If configured available energy is insufficient for the target, the command
-fails instead of extrapolating availability.
+`results/emissions_price_frontier.csv`. Each year is optimized independently;
+colors and the CSV `year` column identify its nondominated points. The plot
+shows total procurement cost in RMB for the selected MWh target against
+emissions in kgCO2(e)/MWh; the CSV also includes average RMB/kWh. It uses
+ordinary configured source availability and prices only; disruption scenarios
+are intentionally excluded. Source/month rows with a missing price
+or source emission factor are omitted rather than assigned zero. If configured
+available energy in any year is insufficient for the target, the command fails
+instead of extrapolating availability.
 
 The bundled synthetic profile has one day of data and only two sources; its
-onsite solar supply is availability-limited, so it produces one frontier point
-for the best feasible mix, not a rich market-wide curve. The prices and
+onsite solar supply is availability-limited, so it produces one annual frontier
+point for the best feasible mix, not a rich market-wide curve. The prices and
 emissions are hypothetical explicit assumptions. Different price categories
 (such as customer tariffs, generator selling prices, and generation cost/LCOE)
-remain identified on each plotted point and should not be interpreted as
+remain identified in the CSV and should not be interpreted as
 interchangeable observed market prices. The chart is an energy procurement
 comparison over the supplied horizon, not a battery dispatch or grid-mix
-analysis.
+analysis. For a multi-year comparison, provide a contiguous hourly profile
+covering each year to be plotted.
 
 The checked-in [synthetic example plot](examples/synthetic/results/emissions_price_frontier.svg)
 and [frontier data](examples/synthetic/results/emissions_price_frontier.csv)

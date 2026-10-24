@@ -3,7 +3,11 @@ from pathlib import Path
 import argparse
 import csv
 
-from energy_data import load_energy_inputs
+from energy_data import (
+    fuel_litres_to_electricity_kwh,
+    fuel_price_rmb_per_kwh,
+    load_energy_inputs,
+)
 
 
 @dataclass(frozen=True)
@@ -54,7 +58,18 @@ def validate_inputs(jobs, inputs=SYNTHETIC_INPUTS):
             raise ValueError(f"Negative job energy: {job.name}")
 
 
-def _source_accounting(source_id, amount_kwh, timestamp, inputs):
+def _scenario_impact(source_id, scenario, inputs):
+    return inputs.scenario_impacts.get((scenario, source_id))
+
+
+def _scenario_availability(source_id, hour, scenario, inputs):
+    # A source without a scenario row retains its ordinary hourly availability.
+    impact = _scenario_impact(source_id, scenario, inputs)
+    multiplier = impact.availability_multiplier if impact else 1.0
+    return inputs.availability_kwh[source_id][hour] * multiplier
+
+
+def _source_accounting(source_id, amount_kwh, timestamp, inputs, scenario):
     if amount_kwh <= 1e-12:
         return 0.0, 0.0
     source = inputs.sources[source_id]
@@ -72,16 +87,28 @@ def _source_accounting(source_id, amount_kwh, timestamp, inputs):
         )
     if source.price_unit == "RMB/litre":
         fuel_litres = amount_kwh * source.fuel_consumption_l_per_kwh
-        return fuel_litres * price_record.price, fuel_litres * factor_record.factor
+        impact = _scenario_impact(source_id, scenario, inputs)
+        price_multiplier = impact.price_multiplier if impact else 1.0
+        return (
+            fuel_litres * price_record.price * price_multiplier,
+            fuel_litres * factor_record.factor,
+        )
+    impact = _scenario_impact(source_id, scenario, inputs)
+    price_multiplier = impact.price_multiplier if impact else 1.0
     return (
-        amount_kwh * price_record.price,
+        amount_kwh * price_record.price * price_multiplier,
         amount_kwh * factor_record.factor,
     )
 
 
-def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS):
+def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS, scenario="ordinary"):
     """Dispatch hourly supply; battery starts empty and stores onsite solar only."""
     validate_inputs([], inputs)
+    if scenario != "ordinary" and not any(
+        impact_scenario == scenario
+        for impact_scenario, _ in inputs.scenario_impacts
+    ):
+        raise ValueError(f"Unknown energy scenario: {scenario}.")
     soc = 0.0
     rows = []
     fuel_used_l = {source_id: 0.0 for source_id in inputs.sources}
@@ -104,7 +131,9 @@ def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS):
         solar_surplus_by_source = {}
         remaining_load = facility_load
         for source in solar_sources:
-            available = inputs.availability_kwh[source.source_id][hour]
+            available = _scenario_availability(
+                source.source_id, hour, scenario, inputs
+            )
             direct = min(available, remaining_load)
             used_by_source[source.source_id] += direct
             solar_surplus_by_source[source.source_id] = available - direct
@@ -142,16 +171,19 @@ def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS):
             ),
             key=lambda source: (source.dispatch_order, source.source_id),
         )
+        # Dispatch order can reserve emergency generators for actual shortfalls.
         for source in other_sources:
-            available = inputs.availability_kwh[source.source_id][hour]
+            available = _scenario_availability(
+                source.source_id, hour, scenario, inputs
+            )
             limit = min(available, source.max_power_kw)
             if source.fuel_consumption_l_per_kwh is not None:
                 limit = min(
                     limit,
-                    (
-                        source.fuel_inventory_l - fuel_used_l[source.source_id]
-                    )
-                    / source.fuel_consumption_l_per_kwh,
+                    fuel_litres_to_electricity_kwh(
+                        source.fuel_inventory_l - fuel_used_l[source.source_id],
+                        source.fuel_consumption_l_per_kwh,
+                    ),
                 )
             amount = min(max(0.0, limit), remaining_load)
             used_by_source[source.source_id] += amount
@@ -170,7 +202,7 @@ def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS):
         source_emissions = {}
         for source_id, amount in used_by_source.items():
             cost, emissions = _source_accounting(
-                source_id, amount, timestamp, inputs
+                source_id, amount, timestamp, inputs, scenario
             )
             source_costs[source_id] = cost
             source_emissions[source_id] = emissions
@@ -196,11 +228,12 @@ def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS):
         row = {
             "hour": hour,
             "timestamp": timestamp.isoformat(),
+            "scenario": scenario,
             "protected_it_kwh": inputs.protected_it_kw[hour],
             "flexible_it_kwh": flexible_it,
             "facility_kwh": facility_load,
             "solar_available_kwh": sum(
-                inputs.availability_kwh[source.source_id][hour]
+                _scenario_availability(source.source_id, hour, scenario, inputs)
                 for source in solar_sources
             ),
             "solar_direct_kwh": sum(
@@ -216,18 +249,32 @@ def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS):
             "emissions_kg": sum(source_emissions.values()),
         }
         for source_id, amount in used_by_source.items():
+            source = inputs.sources[source_id]
             row[f"source_{source_id}_kwh"] = amount
             row[f"source_{source_id}_cost_rmb"] = source_costs[source_id]
             row[f"source_{source_id}_emissions_kg"] = source_emissions[source_id]
             monthly_price = inputs.monthly_prices[
                 (source_id, timestamp.strftime("%Y-%m"))
             ]
+            impact = _scenario_impact(source_id, scenario, inputs)
+            price_multiplier = impact.price_multiplier if impact else 1.0
             factor = inputs.emission_factors[source_id]
+            effective_price = monthly_price.price
+            if effective_price is not None:
+                if source.price_unit == "RMB/litre":
+                    effective_price = fuel_price_rmb_per_kwh(
+                        effective_price, source.fuel_consumption_l_per_kwh
+                    )
+                effective_price *= price_multiplier
+            row[f"source_{source_id}_effective_price_rmb_per_kwh"] = (
+                effective_price
+            )
             row[f"source_{source_id}_price_category"] = (
                 monthly_price.price_category
             )
             row[f"source_{source_id}_price_unit"] = monthly_price.unit
             row[f"source_{source_id}_price_status"] = monthly_price.status
+            row[f"source_{source_id}_price_scenario_multiplier"] = price_multiplier
             row[f"source_{source_id}_emission_unit"] = factor.unit
             row[f"source_{source_id}_emission_boundary"] = factor.boundary
         rows.append(row)
@@ -240,8 +287,10 @@ def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS):
     return rows
 
 
-def objective(schedule, battery, carbon_price, inputs=SYNTHETIC_INPUTS):
-    rows = dispatch(schedule, battery, inputs)
+def objective(
+    schedule, battery, carbon_price, inputs=SYNTHETIC_INPUTS, scenario="ordinary"
+):
+    rows = dispatch(schedule, battery, inputs, scenario)
     return sum(
         row["electricity_cost_rmb"]
         + carbon_price * row["emissions_kg"]
@@ -251,7 +300,7 @@ def objective(schedule, battery, carbon_price, inputs=SYNTHETIC_INPUTS):
 
 def build_schedule(jobs, battery, smart=False, quantum_kwh=1.0,
                    carbon_price=CARBON_PRICE_RMB_PER_KG,
-                   inputs=SYNTHETIC_INPUTS):
+                   inputs=SYNTHETIC_INPUTS, scenario="ordinary"):
     validate_inputs(jobs, inputs)
 
     if quantum_kwh <= 0:
@@ -282,7 +331,7 @@ def build_schedule(jobs, battery, smart=False, quantum_kwh=1.0,
                     amount = min(quantum_kwh, remaining, spare[hour])
                     schedule[job.name][hour] += amount
                     scores[hour] = objective(
-                        schedule, battery, carbon_price, inputs
+                        schedule, battery, carbon_price, inputs, scenario
                     )
                     schedule[job.name][hour] -= amount
 
@@ -343,7 +392,13 @@ def main(argv=None):
         type=Path,
         default=Path(__file__).resolve().parent / "examples" / "synthetic",
         help="directory containing source_config.csv, hourly_availability.csv, "
-        "monthly_prices.csv, and emission_factors.csv",
+        "monthly_prices.csv, emission_factors.csv, and optionally "
+        "scenario_impacts.csv",
+    )
+    parser.add_argument(
+        "--scenario",
+        default="ordinary",
+        help="operating scenario from scenario_impacts.csv (default: ordinary)",
     )
     args = parser.parse_args(argv)
     inputs = load_energy_inputs(args.data_dir)
@@ -362,10 +417,10 @@ def main(argv=None):
     for name, smart, carbon_price in strategies:
         schedule = build_schedule(
             JOBS, battery, smart=smart, carbon_price=carbon_price,
-            inputs=inputs,
+            inputs=inputs, scenario=args.scenario,
         )
         verify_schedule(JOBS, schedule, inputs)
-        rows = dispatch(schedule, battery, inputs)
+        rows = dispatch(schedule, battery, inputs, args.scenario)
 
         for row in rows:
             for job in JOBS:
