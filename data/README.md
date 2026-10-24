@@ -1,10 +1,14 @@
 # Data provenance and limitations
 
-These CSVs are empty input templates, not a source of prices or emissions
-factors. The official-site requests made for this change failed at DNS lookup,
-so no source-derived numeric prices or factors could be verified and none are
-filled in here. This includes source-specific monthly contracts, Shanghai
-tariffs and diesel prices, and the underlying official emissions-factor table.
+These CSVs record input templates and explicit data gaps, not observed numeric
+prices or emissions factors. The official-site requests made for this change
+failed at DNS lookup, so no source-derived numeric prices or factors could be
+verified and none are filled in here. `monthly_prices.csv` has a blank
+`status=missing` row for each configured source/month for 2025; this is a
+missing-value marker, not zero. `source_config.csv` uses zero-capacity
+placeholders that must be replaced. This includes source-specific monthly
+contracts, Shanghai tariffs and diesel prices, and the underlying official
+emissions-factor table.
 
 Start verification with:
 
@@ -58,7 +62,8 @@ combustion), with reference year, geography, boundary, source, and method.
 Direct and lifecycle factors cannot be combined in one objective.
 
 `source_config.csv` records supply type (`onsite`, `contract`, or `grid`),
-power capacity, dispatch order, and optional diesel fuel constraints.
+power capacity, dispatch order, and optional diesel fuel constraints. Its
+placeholder capacities are not operational limits or observations.
 `hourly_availability.csv` is separate from monthly prices and records the
 timestamped available kWh and protected IT demand. Onsite solar must have zero
 availability at night. Contracts require a delivery profile; grid import is
