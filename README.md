@@ -146,6 +146,10 @@ equivalent scenario-adjusted RMB/kWh price. The model does not invent a
 universal generator consumption rate and limits generation by hourly
 availability/capacity and configured diesel inventory. Give strategic reserves
 a later `dispatch_order` than normal supply so they are used only when needed.
+Dispatch limits solar availability to 10% and all other non-gas/non-diesel
+availability to 50%; natural-gas and diesel availability is not scaled. Diesel
+dispatch preserves 25% of configured fuel inventory outside winter and 50% in
+December through February.
 The battery retains its original solar-only charging behavior.
 
 Run a configured emergency case with:
