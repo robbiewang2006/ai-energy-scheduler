@@ -1,0 +1,753 @@
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
+import argparse
+import csv
+import math
+
+from energy_data import (
+    fuel_litres_to_electricity_kwh,
+    fuel_price_rmb_per_kwh,
+    load_energy_inputs,
+)
+
+
+@dataclass(frozen=True)
+class Job:
+    name: str
+    release: int              # start_time, in hours
+    deadline: Optional[int]   # None = open-ended (no hard deadline)
+    compute_kwh: float        # energy_needed
+    urgency_level: int = 1    # higher = more urgent / important
+
+
+@dataclass(frozen=True)
+class Battery:
+    capacity_kwh: float = 30.0
+    power_kw: float = 10.0
+    charge_efficiency: float = 0.95
+    discharge_efficiency: float = 0.95
+
+
+IT_CAPACITY_KW = 35.0
+PUE = 1.2
+CARBON_PRICE_RMB_PER_KG = 0.20
+ANNUAL_DEMAND_REFERENCE_KWH = 1_000_000_000.0
+HOURS_PER_DAY = 24.0
+# RMB penalty per kWh, per hour of delay, per unit of urgency, for open-ended
+# tasks. 24 * this ≈ "RMB per kWh per day per urgency".
+TIME_PENALTY_RMB_PER_KWH_PER_DAY = 0.5
+
+
+class SupplyShortage(ValueError):
+    """The unchanged dispatch policy cannot supply a candidate schedule."""
+
+
+class PlacementFailure(ValueError):
+    """A baseline heuristic could not place all requested job energy."""
+
+
+class InitializationFailure(ValueError):
+    """The optimizer could not find a supply-feasible initial schedule."""
+
+
+SYNTHETIC_INPUTS = load_energy_inputs(
+    Path(__file__).resolve().parent / "examples" / "synthetic"
+)
+
+DEFAULT_TASKS_CSV = (
+    Path(__file__).resolve().parent / "examples" / "synthetic" / "tasks.csv"
+)
+
+
+# --------------------------------------------------------------------------- #
+# Task loading
+# --------------------------------------------------------------------------- #
+
+def load_jobs_from_csv(path):
+    """Read tasks from CSV.
+
+    Expected columns (header row required):
+        task_id, urgency_level, deadline, energy_needed, start_time
+
+    - ``deadline`` blank  -> open-ended task (no hard deadline)
+    - ``start_time``      -> integer hour index
+    - ``urgency_level``   -> positive integer; higher = more urgent
+    """
+    path = Path(path)
+    jobs = []
+    with path.open("r", encoding="utf-8", newline="") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            deadline_raw = (row.get("deadline") or "").strip()
+            deadline = int(deadline_raw) if deadline_raw else None
+            jobs.append(Job(
+                name=row["task_id"].strip(),
+                release=int(row["start_time"]),
+                deadline=deadline,
+                compute_kwh=float(row["energy_needed"]),
+                urgency_level=int(row["urgency_level"]),
+            ))
+    return jobs
+
+
+def _effective_deadline(job, inputs):
+    """Deadline, or the scheduling horizon for open-ended tasks."""
+    return job.deadline if job.deadline is not None else len(inputs.timestamps)
+
+
+# --------------------------------------------------------------------------- #
+# Validation
+# --------------------------------------------------------------------------- #
+
+def validate_inputs(jobs, inputs=SYNTHETIC_INPUTS):
+    if PUE < 1:
+        raise ValueError("PUE must be at least 1.")
+    if any(x > IT_CAPACITY_KW for x in inputs.protected_it_kw):
+        raise ValueError("Protected demand exceeds computing capacity.")
+    if len({job.name for job in jobs}) != len(jobs):
+        raise ValueError("Job names must be unique.")
+
+    horizon = len(inputs.timestamps)
+    for job in jobs:
+        deadline = _effective_deadline(job, inputs)
+        if not 0 <= job.release < deadline <= horizon:
+            raise ValueError(f"Invalid time window: {job.name}")
+        if not math.isfinite(job.compute_kwh) or job.compute_kwh < 0:
+            raise ValueError(f"Invalid job energy: {job.name}")
+        if not isinstance(job.urgency_level, int) or job.urgency_level < 1:
+            raise ValueError(f"Invalid urgency level: {job.name}")
+
+
+# --------------------------------------------------------------------------- #
+# Scenario + accounting helpers (unchanged)
+# --------------------------------------------------------------------------- #
+
+def _scenario_impact(source_id, scenario, inputs):
+    return inputs.scenario_impacts.get((scenario, source_id))
+
+
+def _scenario_availability(source_id, hour, scenario, inputs):
+    impact = _scenario_impact(source_id, scenario, inputs)
+    multiplier = impact.availability_multiplier if impact else 1.0
+    return inputs.availability_kwh[source_id][hour] * multiplier
+
+
+def _source_accounting(source_id, amount_kwh, timestamp, inputs, scenario):
+    if amount_kwh <= 1e-12:
+        return 0.0, 0.0
+    source = inputs.sources[source_id]
+    month = timestamp.strftime("%Y-%m")
+    price_record = inputs.monthly_prices[(source_id, month)]
+    if price_record.price is None:
+        raise ValueError(
+            f"Missing {source_id} price for {month}; refusing to use zero."
+        )
+    factor_record = inputs.emission_factors[source_id]
+    if factor_record.factor is None:
+        raise ValueError(
+            f"Missing emissions factor for used source {source_id}; "
+            "refusing to use zero."
+        )
+    impact = _scenario_impact(source_id, scenario, inputs)
+    price_multiplier = impact.price_multiplier if impact else 1.0
+    if source.price_unit == "RMB/litre":
+        fuel_litres = amount_kwh * source.fuel_consumption_l_per_kwh
+        return (
+            fuel_litres * price_record.price * price_multiplier,
+            fuel_litres * factor_record.factor,
+        )
+    return (
+        amount_kwh * price_record.price * price_multiplier,
+        amount_kwh * factor_record.factor,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Dispatch (unchanged)
+# --------------------------------------------------------------------------- #
+
+def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS, scenario="ordinary"):
+    """Dispatch hourly supply; battery starts empty and stores onsite solar only."""
+    validate_inputs([], inputs)
+    if (
+        not all(math.isfinite(value) for value in (
+            battery.capacity_kwh, battery.power_kw,
+            battery.charge_efficiency, battery.discharge_efficiency,
+        ))
+        or battery.capacity_kwh < 0 or battery.power_kw < 0
+        or not 0 < battery.charge_efficiency <= 1
+        or not 0 < battery.discharge_efficiency <= 1
+    ):
+        raise ValueError("Invalid battery capacity, power, or efficiency.")
+    if any(
+        len(values) != len(inputs.timestamps)
+        or any(not math.isfinite(value) or value < -1e-9 for value in values)
+        for values in schedule.values()
+    ):
+        raise ValueError("Schedule must contain finite nonnegative hourly values.")
+    if scenario != "ordinary" and not any(
+        impact_scenario == scenario
+        for impact_scenario, _ in inputs.scenario_impacts
+    ):
+        raise ValueError(f"Unknown energy scenario: {scenario}.")
+    soc = 0.0
+    rows = []
+    fuel_used_l = {source_id: 0.0 for source_id in inputs.sources}
+    accounting_classes = set()
+
+    for hour, timestamp in enumerate(inputs.timestamps):
+        flexible_it = sum(values[hour] for values in schedule.values())
+        it_load = inputs.protected_it_kw[hour] + flexible_it
+        facility_load = PUE * it_load
+
+        solar_sources = sorted(
+            (
+                source for source in inputs.sources.values()
+                if source.technology == "solar_pv"
+                and source.supply_type == "onsite"
+            ),
+            key=lambda source: (source.dispatch_order, source.source_id),
+        )
+        used_by_source = {source_id: 0.0 for source_id in inputs.sources}
+        solar_surplus_by_source = {}
+        remaining_load = facility_load
+        for source in solar_sources:
+            available = _scenario_availability(
+                source.source_id, hour, scenario, inputs
+            )
+            direct = min(available, remaining_load)
+            used_by_source[source.source_id] += direct
+            solar_surplus_by_source[source.source_id] = available - direct
+            remaining_load -= direct
+        solar_surplus = sum(solar_surplus_by_source.values())
+        charge = min(
+            solar_surplus,
+            battery.power_kw,
+            max(0.0, battery.capacity_kwh - soc)
+            / battery.charge_efficiency,
+        )
+        charge_left = charge
+        for source in solar_sources:
+            source_charge = min(
+                solar_surplus_by_source.get(source.source_id, 0.0),
+                charge_left,
+            )
+            used_by_source[source.source_id] += source_charge
+            charge_left -= source_charge
+        soc += charge * battery.charge_efficiency
+
+        discharge = min(
+            remaining_load,
+            battery.power_kw,
+            soc * battery.discharge_efficiency,
+        )
+        soc -= discharge / battery.discharge_efficiency
+        soc = max(0.0, soc)
+
+        remaining_load -= discharge
+        other_sources = sorted(
+            (
+                source for source in inputs.sources.values()
+                if source not in solar_sources
+            ),
+            key=lambda source: (source.dispatch_order, source.source_id),
+        )
+        for source in other_sources:
+            available = _scenario_availability(
+                source.source_id, hour, scenario, inputs
+            )
+            limit = min(available, source.max_power_kw)
+            if source.fuel_consumption_l_per_kwh is not None:
+                limit = min(
+                    limit,
+                    fuel_litres_to_electricity_kwh(
+                        source.fuel_inventory_l - fuel_used_l[source.source_id],
+                        source.fuel_consumption_l_per_kwh,
+                    ),
+                )
+            amount = min(max(0.0, limit), remaining_load)
+            used_by_source[source.source_id] += amount
+            remaining_load -= amount
+            if source.fuel_consumption_l_per_kwh is not None:
+                fuel_used_l[source.source_id] += (
+                    amount * source.fuel_consumption_l_per_kwh
+                )
+
+        if remaining_load > 1e-6:
+            raise SupplyShortage(
+                f"Available supplies cannot meet the facility load at {timestamp}."
+            )
+
+        source_costs = {}
+        source_emissions = {}
+        for source_id, amount in used_by_source.items():
+            cost, emissions = _source_accounting(
+                source_id, amount, timestamp, inputs, scenario
+            )
+            source_costs[source_id] = cost
+            source_emissions[source_id] = emissions
+            if amount > 1e-12:
+                factor = inputs.emission_factors[source_id]
+                accounting_classes.add((
+                    "CO2e" if factor.unit.startswith("kgCO2e") else "CO2",
+                    "lifecycle"
+                    if "lifecycle" in factor.boundary.lower()
+                    else "direct",
+                ))
+        grid = sum(
+            used_by_source[source_id]
+            for source_id, source in inputs.sources.items()
+            if source.supply_type == "grid"
+        )
+        grid_emissions = sum(
+            source_emissions[source_id]
+            for source_id, source in inputs.sources.items()
+            if source.supply_type == "grid"
+        )
+
+        row = {
+            "hour": hour,
+            "timestamp": timestamp.isoformat(),
+            "scenario": scenario,
+            "protected_it_kwh": inputs.protected_it_kw[hour],
+            "flexible_it_kwh": flexible_it,
+            "facility_kwh": facility_load,
+            "solar_available_kwh": sum(
+                _scenario_availability(source.source_id, hour, scenario, inputs)
+                for source in solar_sources
+            ),
+            "solar_direct_kwh": sum(
+                used_by_source[source.source_id] for source in solar_sources
+            ) - charge,
+            "battery_charge_kwh": charge,
+            "battery_discharge_kwh": discharge,
+            "battery_soc_kwh": soc,
+            "solar_curtailed_kwh": solar_surplus - charge,
+            "grid_kwh": grid,
+            "grid_emissions_kg": grid_emissions,
+            "electricity_cost_rmb": sum(source_costs.values()),
+            "emissions_kg": sum(source_emissions.values()),
+        }
+        for source_id, amount in used_by_source.items():
+            source = inputs.sources[source_id]
+            row[f"source_{source_id}_kwh"] = amount
+            row[f"source_{source_id}_cost_rmb"] = source_costs[source_id]
+            row[f"source_{source_id}_emissions_kg"] = source_emissions[source_id]
+            monthly_price = inputs.monthly_prices[
+                (source_id, timestamp.strftime("%Y-%m"))
+            ]
+            impact = _scenario_impact(source_id, scenario, inputs)
+            price_multiplier = impact.price_multiplier if impact else 1.0
+            factor = inputs.emission_factors[source_id]
+            effective_price = monthly_price.price
+            if effective_price is not None:
+                if source.price_unit == "RMB/litre":
+                    effective_price = fuel_price_rmb_per_kwh(
+                        effective_price, source.fuel_consumption_l_per_kwh
+                    )
+                effective_price *= price_multiplier
+            row[f"source_{source_id}_effective_price_rmb_per_kwh"] = (
+                effective_price
+            )
+            row[f"source_{source_id}_price_category"] = monthly_price.price_category
+            row[f"source_{source_id}_price_unit"] = monthly_price.unit
+            row[f"source_{source_id}_price_status"] = monthly_price.status
+            row[f"source_{source_id}_price_scenario_multiplier"] = price_multiplier
+            row[f"source_{source_id}_emission_unit"] = factor.unit
+            row[f"source_{source_id}_emission_boundary"] = factor.boundary
+        rows.append(row)
+
+    if len(accounting_classes) > 1:
+        raise ValueError(
+            "Cannot combine lifecycle and direct emissions factors in "
+            "one objective; configure a consistent accounting boundary."
+        )
+    return rows
+
+
+# --------------------------------------------------------------------------- #
+# Time penalty + objective
+# --------------------------------------------------------------------------- #
+
+def time_penalty(jobs, schedule, inputs=SYNTHETIC_INPUTS,
+                 time_weight=TIME_PENALTY_RMB_PER_KWH_PER_DAY):
+    """RMB penalty for scheduling open-ended tasks later than their release.
+
+    Only *open-ended* tasks (``deadline is None``) incur a penalty — tasks
+    with a deadline are already bounded by it.  Each kWh placed at hour ``h``
+    contributes ``kwh · urgency_level · time_weight / 24 · (h − release)``.
+
+    The optimizer trades this against electricity + carbon cost, so a cheap
+    hour later in the horizon is only chosen if its energy savings exceed the
+    urgency-weighted time penalty.
+    """
+    penalty = 0.0
+    for job in jobs:
+        if job.deadline is not None:
+            continue
+        per_kwh_per_hour = job.urgency_level * time_weight / HOURS_PER_DAY
+        for hour, kwh in enumerate(schedule[job.name]):
+            if kwh > 1e-9:
+                penalty += kwh * per_kwh_per_hour * (hour - job.release)
+    return penalty
+
+
+def objective(
+    schedule, battery, carbon_price, inputs=SYNTHETIC_INPUTS,
+    scenario="ordinary", jobs=None,
+    time_weight=TIME_PENALTY_RMB_PER_KWH_PER_DAY,
+):
+    rows = dispatch(schedule, battery, inputs, scenario)
+    energy = sum(
+        row["electricity_cost_rmb"] + carbon_price * row["emissions_kg"]
+        for row in rows
+    )
+    if jobs is None:
+        return energy
+    return energy + time_penalty(jobs, schedule, inputs, time_weight)
+
+
+# --------------------------------------------------------------------------- #
+# Baseline scheduling heuristics
+# --------------------------------------------------------------------------- #
+
+def _job_sort_key(item):
+    """Deadline tasks first (EDF), then open-ended tasks by urgency descending.
+
+    Deadline tasks: sorted by (deadline, -urgency, release).
+    Open-ended tasks: sorted by (-urgency, release).
+
+    Higher ``urgency_level`` is treated as *more urgent*.  Flip the sign on
+    ``-item.urgency_level`` if your convention is the opposite.
+    """
+    if item.deadline is not None:
+        return (0, item.deadline, -item.urgency_level, item.release)
+    return (1, 0, -item.urgency_level, item.release)
+
+
+def build_schedule(jobs, battery, smart=False, quantum_kwh=1.0,
+                   carbon_price=CARBON_PRICE_RMB_PER_KG,
+                   inputs=SYNTHETIC_INPUTS, scenario="ordinary",
+                   time_weight=TIME_PENALTY_RMB_PER_KWH_PER_DAY):
+    validate_inputs(jobs, inputs)
+    if quantum_kwh <= 0:
+        raise ValueError("Scheduling quantum must be positive.")
+
+    schedule = {job.name: [0.0] * len(inputs.timestamps) for job in jobs}
+    spare = [IT_CAPACITY_KW - load for load in inputs.protected_it_kw]
+
+    for job in sorted(jobs, key=_job_sort_key):
+        remaining = job.compute_kwh
+        deadline = _effective_deadline(job, inputs)
+
+        while remaining > 1e-9:
+            candidates = [
+                hour for hour in range(job.release, deadline)
+                if spare[hour] > 1e-9
+            ]
+            if not candidates:
+                raise PlacementFailure(
+                    f"Could not place {job.name}. This greedy heuristic may "
+                    "fail even when a different joint schedule is feasible."
+                )
+
+            if smart:
+                scores = {}
+                for hour in candidates:
+                    amount = min(quantum_kwh, remaining, spare[hour])
+                    schedule[job.name][hour] += amount
+                    try:
+                        scores[hour] = objective(
+                            schedule, battery, carbon_price, inputs, scenario,
+                            jobs=jobs, time_weight=time_weight,
+                        )
+                    except SupplyShortage:
+                        continue
+                    finally:
+                        schedule[job.name][hour] -= amount
+
+                if not scores:
+                    raise PlacementFailure(
+                        f"No supply-feasible greedy placement for {job.name}; "
+                        "this heuristic failure is not proof of infeasibility."
+                    )
+                chosen = min(scores, key=lambda hour: (scores[hour], hour))
+            else:
+                chosen = min(candidates)
+
+            amount = min(quantum_kwh, remaining, spare[chosen])
+            schedule[job.name][chosen] += amount
+            spare[chosen] -= amount
+            remaining -= amount
+
+    return schedule
+
+
+# --------------------------------------------------------------------------- #
+# Verification helpers
+# --------------------------------------------------------------------------- #
+
+def verify_schedule(jobs, schedule, inputs=SYNTHETIC_INPUTS):
+    for job in jobs:
+        values = schedule[job.name]
+        deadline = _effective_deadline(job, inputs)
+        assert len(values) == len(inputs.timestamps)
+        assert all(math.isfinite(value) and value >= -1e-9 for value in values)
+        assert abs(sum(values) - job.compute_kwh) < 1e-6
+        assert all(
+            abs(value) < 1e-9
+            for hour, value in enumerate(values)
+            if not job.release <= hour < deadline
+        )
+
+    for hour in range(len(inputs.timestamps)):
+        load = inputs.protected_it_kw[hour] + sum(
+            values[hour] for values in schedule.values()
+        )
+        assert load <= IT_CAPACITY_KW + 1e-6
+
+
+def constraint_violation(jobs, schedule, rows, battery, inputs=SYNTHETIC_INPUTS):
+    violations = [0.0]
+    for job in jobs:
+        values = schedule[job.name]
+        deadline = _effective_deadline(job, inputs)
+        violations.append(abs(sum(values) - job.compute_kwh))
+        violations.extend(max(0.0, -value) for value in values)
+        violations.extend(
+            abs(value) for hour, value in enumerate(values)
+            if not job.release <= hour < deadline
+        )
+    soc = 0.0
+    for hour, row in enumerate(rows):
+        it = inputs.protected_it_kw[hour] + sum(
+            values[hour] for values in schedule.values()
+        )
+        charge = row["battery_charge_kwh"]
+        discharge = row["battery_discharge_kwh"]
+        supply = sum(row[f"source_{source_id}_kwh"] for source_id in inputs.sources)
+        violations.extend((
+            max(0.0, it - IT_CAPACITY_KW),
+            abs(row["protected_it_kwh"] - inputs.protected_it_kw[hour]),
+            abs(row["facility_kwh"] - PUE * it),
+            abs(supply + discharge - charge - row["facility_kwh"]),
+            abs(row["battery_soc_kwh"] - (
+                soc + charge * battery.charge_efficiency
+                - discharge / battery.discharge_efficiency
+            )),
+            max(0.0, -row["battery_soc_kwh"]),
+            max(0.0, row["battery_soc_kwh"] - battery.capacity_kwh),
+            max(0.0, -charge, -discharge),
+            max(0.0, charge - battery.power_kw, discharge - battery.power_kw),
+        ))
+        soc = row["battery_soc_kwh"]
+    return max(violations)
+
+
+def summarize(name, rows, carbon_weight=CARBON_PRICE_RMB_PER_KG,
+              annual_demand_reference_kwh=ANNUAL_DEMAND_REFERENCE_KWH,
+              time_penalty_rmb=0.0):
+    if not math.isfinite(carbon_weight) or carbon_weight < 0:
+        raise ValueError("Carbon weight must be finite and nonnegative.")
+    if not math.isfinite(time_penalty_rmb) or time_penalty_rmb < 0:
+        raise ValueError("Time penalty must be finite and nonnegative.")
+    if (not math.isfinite(annual_demand_reference_kwh)
+            or annual_demand_reference_kwh <= 0):
+        raise ValueError("Annual demand reference must be finite and positive.")
+    facility_energy = sum(row["facility_kwh"] for row in rows)
+    if facility_energy <= 0:
+        raise ValueError("Cannot normalize zero facility energy.")
+    cost = sum(row["electricity_cost_rmb"] for row in rows)
+    emissions = sum(row["emissions_kg"] for row in rows)
+    energy_score = cost + carbon_weight * emissions
+    total_score = energy_score + time_penalty_rmb
+    factor = annual_demand_reference_kwh / facility_energy
+    result = {
+        "strategy": name,
+        "cost_rmb": cost,
+        "emissions_kg": emissions,
+        "carbon_weight_rmb_per_kg": carbon_weight,
+        "energy_score_rmb": energy_score,
+        "time_penalty_rmb": time_penalty_rmb,
+        "score_rmb": total_score,
+        "facility_energy_kwh": facility_energy,
+        "annual_demand_reference_kwh": annual_demand_reference_kwh,
+        "normalization_factor": factor,
+        "cost_per_1twh_rmb": cost * 1e9 / facility_energy,
+        "emissions_per_1twh_kg": emissions * 1e9 / facility_energy,
+        "score_per_1twh_rmb": total_score * 1e9 / facility_energy,
+        "cost_per_reference_rmb": cost * factor,
+        "emissions_per_reference_kg": emissions * factor,
+        "score_per_reference_rmb": total_score * factor,
+        "simulation_start": rows[0]["timestamp"],
+        "simulation_end": rows[-1]["timestamp"],
+        "simulation_hours": len(rows),
+        "metric_scope": "normalized scenario, not an annual forecast",
+        "grid_energy_kwh": sum(row["grid_kwh"] for row in rows),
+        "peak_grid_kw": max(row["grid_kwh"] for row in rows),
+        "solar_curtailed_kwh": sum(
+            row["solar_curtailed_kwh"] for row in rows
+        ),
+        "ending_battery_kwh": rows[-1]["battery_soc_kwh"],
+    }
+    return result
+
+
+def write_csv(path, rows):
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(
+            file, fieldnames=list(dict.fromkeys(key for row in rows for key in row))
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+# --------------------------------------------------------------------------- #
+# CLI
+# --------------------------------------------------------------------------- #
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Schedule hourly compute jobs.")
+    parser.add_argument(
+        "--data-dir", type=Path,
+        default=Path(__file__).resolve().parent / "examples" / "synthetic",
+        help="directory containing source_config.csv, hourly_availability.csv, "
+        "monthly_prices.csv, emission_factors.csv, and optionally "
+        "scenario_impacts.csv",
+    )
+    parser.add_argument(
+        "--tasks-csv", type=Path, default=DEFAULT_TASKS_CSV,
+        help="task list CSV: task_id, urgency_level, deadline, "
+             "energy_needed, start_time",
+    )
+    parser.add_argument(
+        "--scenario", default="ordinary",
+        help="operating scenario from scenario_impacts.csv (default: ordinary)",
+    )
+    parser.add_argument("--carbon-weight", type=float,
+                        default=CARBON_PRICE_RMB_PER_KG)
+    parser.add_argument("--annual-demand-reference-kwh", type=float,
+                        default=ANNUAL_DEMAND_REFERENCE_KWH)
+    parser.add_argument(
+        "--time-penalty-per-kwh-per-day", type=float,
+        default=TIME_PENALTY_RMB_PER_KWH_PER_DAY,
+        help="urgency-weighted RMB penalty per kWh per day of delay for "
+             "open-ended tasks",
+    )
+    parser.add_argument("--learning-rate", type=float, default=1.0)
+    parser.add_argument("--max-iterations", type=int, default=100)
+    parser.add_argument("--tolerance", type=float, default=1e-7)
+    parser.add_argument("--finite-difference-step", type=float, default=1e-5)
+    parser.add_argument("--initialization",
+                        choices=["uniform", "random", "immediate", "greedy"],
+                        default="uniform")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--output-dir", type=Path, default=Path("results"))
+    args = parser.parse_args(argv)
+
+    inputs = load_energy_inputs(args.data_dir)
+    jobs = load_jobs_from_csv(args.tasks_csv)
+
+    from optimizer import optimize_schedule
+
+    battery = Battery()
+    output = args.output_dir
+    output.mkdir(parents=True, exist_ok=True)
+    summaries = []
+
+    strategies = [
+        ("immediate", False, 0.0),
+        ("price_aware", True, 0.0),
+        ("price_carbon_aware", True, args.carbon_weight),
+        ("gradient", None, args.carbon_weight),
+    ]
+
+    for name, smart, carbon_price in strategies:
+        try:
+            if name == "gradient":
+                schedule, history = optimize_schedule(
+                    jobs, battery, inputs=inputs, scenario=args.scenario,
+                    carbon_weight=args.carbon_weight,
+                    learning_rate=args.learning_rate,
+                    max_iterations=args.max_iterations,
+                    tolerance=args.tolerance,
+                    initialization=args.initialization, seed=args.seed,
+                    finite_difference_step=args.finite_difference_step,
+                    annual_demand_reference_kwh=args.annual_demand_reference_kwh,
+                    time_weight=args.time_penalty_per_kwh_per_day,
+                )
+                write_csv(output / "optimization_history.csv", history)
+                for entry in history:
+                    print(
+                        f"iteration={entry['iteration']} cost={entry['cost_rmb']:.6f} "
+                        f"emissions={entry['emissions_kg']:.6f} "
+                        f"score={entry['score_rmb']:.6f} "
+                        f"time_pen={entry['time_penalty_rmb']:.6f} "
+                        f"violation={entry['max_constraint_violation_kwh']:.3g} "
+                        f"status={entry['status']}"
+                    )
+            else:
+                schedule = build_schedule(
+                    jobs, battery, smart=smart, carbon_price=carbon_price,
+                    inputs=inputs, scenario=args.scenario,
+                    time_weight=args.time_penalty_per_kwh_per_day,
+                )
+            rows = dispatch(schedule, battery, inputs, args.scenario)
+        except (SupplyShortage, PlacementFailure, InitializationFailure) as error:
+            summaries.append({
+                "strategy": name, "feasible": False, "status": str(error),
+            })
+            continue
+
+        verify_schedule(jobs, schedule, inputs)
+
+        for row in rows:
+            for job in jobs:
+                row[f"job_{job.name}_kwh"] = schedule[job.name][row["hour"]]
+
+        tp = time_penalty(
+            jobs, schedule, inputs, args.time_penalty_per_kwh_per_day
+        )
+        summary = summarize(
+            name, rows, args.carbon_weight, args.annual_demand_reference_kwh,
+            time_penalty_rmb=tp,
+        )
+        violation = constraint_violation(jobs, schedule, rows, battery, inputs)
+        summary.update({
+            "max_constraint_violation_kwh": violation,
+            "feasible": violation <= 1e-6,
+            "status": "evaluated with original dispatch",
+        })
+        summaries.append(summary)
+        write_csv(output / f"{name}_hourly.csv", rows)
+
+    write_csv(output / "comparison.csv", summaries)
+
+    for result in summaries:
+        if not result.get("feasible", False):
+            print(
+                f"{result['strategy']}: no feasible schedule returned: "
+                f"{result['status']}"
+            )
+            continue
+        print(
+            f"{result['strategy']:20s} "
+            f"cost={result['cost_rmb']:.2f} RMB | "
+            f"emissions={result['emissions_kg']:.2f} kg | "
+            f"time_pen={result['time_penalty_rmb']:.2f} RMB | "
+            f"score={result['score_rmb']:.2f} RMB | "
+            f"peak grid={result['peak_grid_kw']:.2f} kW"
+        )
+
+    by_name = {result["strategy"]: result for result in summaries}
+    greedy = by_name["price_carbon_aware"]
+    gradient = by_name["gradient"]
+    if greedy.get("feasible") and gradient.get("feasible"):
+        difference = gradient["score_rmb"] - greedy["score_rmb"]
+        print(f"Gradient minus greedy score: {difference:+.6f} RMB "
+              "(positive means gradient performed worse).")
+
+
+if __name__ == "__main__":
+    main()
