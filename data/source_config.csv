@@ -3,3 +3,4 @@ onsite_solar,solar_pv,onsite,RMB/kWh,0,10,,,Template placeholder; disabled until
 wind,wind,contract,RMB/kWh,0,20,,,Template placeholder; configure only with documented source-specific delivery and capacity.
 nuclear,nuclear,contract,RMB/kWh,0,40,,,Template placeholder; configure only with documented source-specific delivery and capacity.
 natural_gas_fired,natural_gas_fired,contract,RMB/kWh,0,60,,,Template placeholder; configure only with documented source-specific delivery and capacity.
+onsite_diesel,diesel_generator,onsite,RMB/kWh,0,80,,,Disabled placeholder; configure capacity and a source-specific price before use.

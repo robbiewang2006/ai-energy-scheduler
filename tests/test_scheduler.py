@@ -219,6 +219,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             solar_prices = [
                 row for row in csv.DictReader(file)
                 if row["source_id"] == "onsite_solar"
+                and row["month"].startswith("2025-")
             ]
 
         expected_prices = [
@@ -260,6 +261,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             gas_prices = [
                 row for row in csv.DictReader(file)
                 if row["source_id"] == "natural_gas_fired"
+                and row["month"].startswith("2025-")
             ]
 
         expected_prices = [0.9676] * 4 + [0.9514] * 8
@@ -289,11 +291,14 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             "wind",
             "nuclear",
             "natural_gas_fired",
+            "onsite_diesel",
         }
         self.assertEqual(set(sources), expected_sources)
         self.assertFalse(any(source.supply_type == "grid" for source in sources.values()))
         timestamps = [
-            datetime(2025, month, 1) for month in range(1, 13)
+            datetime(year, month, 1)
+            for year in (2025, 2026)
+            for month in range(1, 13)
         ]
         prices = load_monthly_prices(
             root / "data" / "monthly_prices.csv", sources, timestamps
@@ -301,7 +306,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         factors = load_emission_factors(
             root / "data" / "emission_factors.csv", sources
         )
-        self.assertEqual(len(prices), len(expected_sources) * 12)
+        self.assertEqual(len(prices), len(expected_sources) * 24)
         self.assertEqual(set(factors), expected_sources)
         self.assertTrue(
             all(
@@ -312,7 +317,31 @@ class SolarMarketPriceDataTests(unittest.TestCase):
                 for month in range(1, 13)
             )
         )
-        self.assertTrue(all(factor.factor is None for factor in factors.values()))
+        self.assertTrue(
+            all(
+                prices[(source_id, f"2026-{month:02d}")].price is None
+                for source_id in expected_sources - {"onsite_solar", "nuclear"}
+                for month in range(1, 13)
+            )
+        )
+        self.assertEqual(
+            {source_id: factor.factor for source_id, factor in factors.items()},
+            {
+                "onsite_solar": 0.041,
+                "wind": 0.0115,
+                "nuclear": 0.059,
+                "natural_gas_fired": 0.440,
+                "onsite_diesel": 0.790,
+            },
+        )
+        self.assertTrue(
+            all(
+                factor.unit == "kgCO2e/kWh"
+                and factor.boundary == "lifecycle"
+                and factor.status == "assumption"
+                for factor in factors.values()
+            )
+        )
 
         with (root / "data" / "monthly_prices.csv").open(
             newline="", encoding="utf-8"
@@ -326,8 +355,9 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             {row["source_id"] for row in prices},
             expected_sources,
         )
-        self.assertTrue(all(row["month"].startswith("2025-") for row in prices))
-        self.assertFalse(any(row["month"].startswith("2026-") for row in prices))
+        self.assertTrue(all(
+            row["month"].startswith(("2025-", "2026-")) for row in prices
+        ))
         self.assertEqual(
             {row["source_id"] for row in factors},
             expected_sources,
@@ -336,8 +366,53 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             row["status"] == "missing"
             for row in prices
             if row["source_id"] == "nuclear"
+            and row["month"].startswith("2025-")
         ))
-        self.assertTrue(all(row["status"] == "missing" for row in factors))
+        self.assertTrue(all(
+            row["status"] == "missing"
+            for row in prices
+            if row["source_id"] == "onsite_diesel"
+        ))
+        self.assertTrue(all(row["status"] == "assumption" for row in factors))
+
+    def test_nuclear_price_is_a_constant_monthly_assumption(self):
+        path = Path(__file__).parent.parent / "data" / "monthly_prices.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            nuclear_prices = [
+                row for row in csv.DictReader(file)
+                if row["source_id"] == "nuclear"
+                and row["month"].startswith("2026-")
+            ]
+
+        self.assertEqual(len(nuclear_prices), 12)
+        for month_number, row in enumerate(nuclear_prices, start=1):
+            with self.subTest(month=row["month"]):
+                self.assertEqual(row["month"], f"2026-{month_number:02d}")
+                self.assertEqual(float(row["price"]), 0.3932)
+                self.assertEqual(row["unit"], "RMB/kWh")
+                self.assertEqual(row["status"], "assumption")
+                self.assertIn("not independently verified", row["notes"])
+
+    def test_emission_factor_rows_preserve_deepseek_source_urls(self):
+        path = Path(__file__).parent.parent / "data" / "emission_factors.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            factors = {row["source_id"]: row for row in csv.DictReader(file)}
+
+        self.assertEqual(set(factors), {
+            "onsite_solar", "wind", "nuclear", "natural_gas_fired",
+            "onsite_diesel",
+        })
+        self.assertTrue(all(row["publisher"] == "DeepSeek" for row in factors.values()))
+        self.assertIn("nrel.gov", factors["natural_gas_fired"]["source_url"])
+        self.assertIn("energynewsbeat.co", factors["natural_gas_fired"]["source_url"])
+        self.assertIn("icef.go.jp", factors["onsite_diesel"]["source_url"])
+        self.assertIn("mendeley.com", factors["wind"]["source_url"])
+        self.assertIn("gridreadiness.com", factors["nuclear"]["source_url"])
+        self.assertIn("arxiv.org", factors["onsite_solar"]["source_url"])
+        self.assertIn(
+            "solarpanelsfordatacenters.co.uk",
+            factors["onsite_solar"]["source_url"],
+        )
 
 
 class MonthlyEnergyInputTests(unittest.TestCase):
