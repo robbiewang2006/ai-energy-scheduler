@@ -1,35 +1,37 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="560" viewBox="0 0 900 560">
 <rect width="100%" height="100%" fill="white"/>
-<style>text{font-family:Arial,sans-serif;fill:#233044}.axis{stroke:#344054;stroke-width:1.5}.grid{stroke:#e5e7eb;stroke-width:1}.frontier{fill:none;stroke:#1976d2;stroke-width:3}.point{fill:#d84315;stroke:white;stroke-width:2}</style>
+<style>text{font-family:Arial,sans-serif;fill:#233044}.axis{stroke:#344054;stroke-width:1.5}.grid{stroke:#e5e7eb;stroke-width:1}.frontier{fill:none;stroke:#1976d2;stroke-width:3}.point{stroke:white;stroke-width:2}</style>
 <text x="450.0" y="32" text-anchor="middle" font-size="20">Cost-emissions frontier for 1 MWh</text>
 <line class="grid" x1="105.00" y1="70" x2="105.00" y2="465"/>
 <text x="105.00" y="487" text-anchor="middle" font-size="12">353</text>
 <line class="grid" x1="105" y1="465.00" x2="855" y2="465.00"/>
-<text x="93" y="469.00" text-anchor="end" font-size="12">0.373</text>
+<text x="93" y="469.00" text-anchor="end" font-size="12">373</text>
 <line class="grid" x1="255.00" y1="70" x2="255.00" y2="465"/>
 <text x="255.00" y="487" text-anchor="middle" font-size="12">378</text>
 <line class="grid" x1="105" y1="386.00" x2="855" y2="386.00"/>
-<text x="93" y="390.00" text-anchor="end" font-size="12">0.399</text>
+<text x="93" y="390.00" text-anchor="end" font-size="12">399</text>
 <line class="grid" x1="405.00" y1="70" x2="405.00" y2="465"/>
 <text x="405.00" y="487" text-anchor="middle" font-size="12">403</text>
 <line class="grid" x1="105" y1="307.00" x2="855" y2="307.00"/>
-<text x="93" y="311.00" text-anchor="end" font-size="12">0.425</text>
+<text x="93" y="311.00" text-anchor="end" font-size="12">425</text>
 <line class="grid" x1="555.00" y1="70" x2="555.00" y2="465"/>
 <text x="555.00" y="487" text-anchor="middle" font-size="12">428</text>
 <line class="grid" x1="105" y1="228.00" x2="855" y2="228.00"/>
-<text x="93" y="232.00" text-anchor="end" font-size="12">0.452</text>
+<text x="93" y="232.00" text-anchor="end" font-size="12">452</text>
 <line class="grid" x1="705.00" y1="70" x2="705.00" y2="465"/>
 <text x="705.00" y="487" text-anchor="middle" font-size="12">453</text>
 <line class="grid" x1="105" y1="149.00" x2="855" y2="149.00"/>
-<text x="93" y="153.00" text-anchor="end" font-size="12">0.478</text>
+<text x="93" y="153.00" text-anchor="end" font-size="12">478</text>
 <line class="grid" x1="855.00" y1="70" x2="855.00" y2="465"/>
 <text x="855.00" y="487" text-anchor="middle" font-size="12">478</text>
 <line class="grid" x1="105" y1="70.00" x2="855" y2="70.00"/>
-<text x="93" y="74.00" text-anchor="end" font-size="12">0.504</text>
+<text x="93" y="74.00" text-anchor="end" font-size="12">504</text>
 <line class="axis" x1="105" y1="465" x2="855" y2="465"/>
 <line class="axis" x1="105" y1="70" x2="105" y2="465"/>
 <text x="480.0" y="532" text-anchor="middle" font-size="15">Emissions (kgCO2/MWh)</text>
-<text x="25" y="267.5" text-anchor="middle" font-size="15" transform="rotate(-90 25 267.5)">Average price (RMB/kWh)</text>
-<circle class="point" cx="480.00" cy="267.50" r="7"/>
-<text x="491.00" y="257.50" font-size="12">1. onsite_solar=24.4%; ordinary_grid=75.6%</text>
+<text x="25" y="267.5" text-anchor="middle" font-size="15" transform="rotate(-90 25 267.5)">Procurement cost (RMB for 1 MWh)</text>
+<circle class="point" fill="#d84315" cx="480.00" cy="267.50" r="7"/>
+<text x="491.00" y="257.50" font-size="12">2025 · 1. onsite_solar=24.4%; ordinary_grid=75.6%</text>
+<circle fill="#d84315" cx="745" cy="48" r="5"/>
+<text x="757" y="52" font-size="12">2025</text>
 </svg>

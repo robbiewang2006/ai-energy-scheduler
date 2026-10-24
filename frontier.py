@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -204,7 +204,53 @@ def pareto_frontier(inputs, target_mwh=1.0):
     return frontier, emission_unit
 
 
-def write_frontier_csv(path, points, emission_unit):
+def calendar_year_frontiers(inputs, target_mwh=1.0):
+    """Find independent ordinary-operation procurement frontiers per year."""
+    years = sorted({timestamp.year for timestamp in inputs.timestamps})
+    points_by_year = []
+    emission_units = set()
+    for year in years:
+        indices = [
+            index for index, timestamp in enumerate(inputs.timestamps)
+            if timestamp.year == year
+        ]
+        timestamps = tuple(inputs.timestamps[index] for index in indices)
+        months = {timestamp.strftime("%Y-%m") for timestamp in timestamps}
+        year_inputs = replace(
+            inputs,
+            timestamps=timestamps,
+            protected_it_kw=tuple(
+                inputs.protected_it_kw[index] for index in indices
+            ),
+            availability_kwh={
+                source_id: tuple(values[index] for index in indices)
+                for source_id, values in inputs.availability_kwh.items()
+            },
+            monthly_prices={
+                key: price for key, price in inputs.monthly_prices.items()
+                if key[1] in months
+            },
+        )
+        points, emission_unit = pareto_frontier(year_inputs, target_mwh)
+        emission_units.add(emission_unit)
+        points_by_year.extend(
+            {
+                "year": year,
+                "cost_rmb": round(
+                    point["avg_price_rmb_per_kwh"] * point["energy_kwh"], 10
+                ),
+                **point,
+            }
+            for point in points
+        )
+    if len(emission_units) != 1:
+        raise ValueError(
+            "Cannot compare direct CO2 and lifecycle CO2e factors in one plot."
+        )
+    return points_by_year, next(iter(emission_units))
+
+
+def write_frontier_csv(path, points, emission_unit, include_year=False):
     import csv
 
     emissions_column = (
@@ -212,35 +258,48 @@ def write_frontier_csv(path, points, emission_unit):
         if emission_unit.startswith("kgCO2e")
         else "emissions_kgCO2_per_MWh"
     )
+    fieldnames = [
+        "energy_kwh",
+        "avg_price_rmb_per_kwh",
+        emissions_column,
+        "mix",
+        "price_categories",
+    ]
+    if include_year:
+        fieldnames = ["year", "cost_rmb", *fieldnames]
     with path.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(
             file,
-            fieldnames=[
-                "energy_kwh",
-                "avg_price_rmb_per_kwh",
-                emissions_column,
-                "mix",
-                "price_categories",
-            ],
+            fieldnames=fieldnames,
+            lineterminator="\n",
         )
         writer.writeheader()
         for point in points:
-            writer.writerow({
+            row = {
                 "energy_kwh": point["energy_kwh"],
                 "avg_price_rmb_per_kwh": point["avg_price_rmb_per_kwh"],
                 emissions_column: point["emissions_kg_per_mwh"],
                 "mix": point["mix"],
                 "price_categories": point["price_categories"],
-            })
+            }
+            if include_year:
+                row["year"] = point["year"]
+                row["cost_rmb"] = point["cost_rmb"]
+            writer.writerow(row)
 
 
-def write_frontier_svg(path, points, emission_unit, target_mwh):
+def write_frontier_svg(
+    path, points, emission_unit, target_mwh, series_key=None
+):
     width, height = 900, 560
     left, right, top, bottom = 105, 45, 70, 95
     plot_width = width - left - right
     plot_height = height - top - bottom
     x_values = [point["emissions_kg_per_mwh"] for point in points]
-    y_values = [point["avg_price_rmb_per_kwh"] for point in points]
+    y_values = [
+        point.get("cost_rmb", point["avg_price_rmb_per_kwh"])
+        for point in points
+    ]
     x_min, x_max = min(x_values), max(x_values)
     y_min, y_max = min(y_values), max(y_values)
     x_pad = (x_max - x_min) * 0.15 or max(abs(x_min) * 0.15, 0.05)
@@ -253,6 +312,9 @@ def write_frontier_svg(path, points, emission_unit, target_mwh):
 
     def y_map(value):
         return top + (y_max - value) / (y_max - y_min) * plot_height
+
+    def point_cost(point):
+        return point.get("cost_rmb", point["avg_price_rmb_per_kwh"])
 
     def esc(value):
         return (
@@ -271,7 +333,7 @@ def write_frontier_svg(path, points, emission_unit, target_mwh):
         '.axis{stroke:#344054;stroke-width:1.5}'
         '.grid{stroke:#e5e7eb;stroke-width:1}'
         '.frontier{fill:none;stroke:#1976d2;stroke-width:3}'
-        '.point{fill:#d84315;stroke:white;stroke-width:2}</style>',
+        '.point{stroke:white;stroke-width:2}</style>',
         f'<text x="{width / 2}" y="32" text-anchor="middle" font-size="20">'
         f'Cost-emissions frontier for {target_mwh:g} MWh</text>',
     ]
@@ -299,26 +361,52 @@ def write_frontier_svg(path, points, emission_unit, target_mwh):
         f'<text x="{left + plot_width / 2}" y="{height - 28}" '
         f'text-anchor="middle" font-size="15">Emissions '
         f'({emissions_name}/MWh)</text>',
+    ])
+    y_axis_label = (
+        f"Procurement cost (RMB for {target_mwh:g} MWh)"
+        if series_key
+        else "Average price (RMB/kWh)"
+    )
+    lines.append(
         f'<text x="25" y="{top + plot_height / 2}" '
         f'text-anchor="middle" font-size="15" '
         f'transform="rotate(-90 25 {top + plot_height / 2})">'
-        'Average price (RMB/kWh)</text>',
-    ])
-    coordinates = " ".join(
-        f'{x_map(point["emissions_kg_per_mwh"]):.2f},'
-        f'{y_map(point["avg_price_rmb_per_kwh"]):.2f}'
-        for point in points
+        f'{esc(y_axis_label)}</text>'
     )
-    if len(points) > 1:
-        lines.append(f'<polyline class="frontier" points="{coordinates}"/>')
-    for index, point in enumerate(points, start=1):
-        x = x_map(point["emissions_kg_per_mwh"])
-        y = y_map(point["avg_price_rmb_per_kwh"])
-        label = f"{index}. {point['mix']}"
-        lines.extend([
-            f'<circle class="point" cx="{x:.2f}" cy="{y:.2f}" r="7"/>',
-            f'<text x="{x + 11:.2f}" y="{y - 10:.2f}" '
-            f'font-size="12">{esc(label)}</text>',
-        ])
+    series = {}
+    for point in points:
+        name = str(point[series_key]) if series_key else ""
+        series.setdefault(name, []).append(point)
+    colors = ("#d84315", "#1976d2", "#388e3c", "#8e24aa", "#ef6c00")
+    for series_index, (name, series_points) in enumerate(series.items()):
+        color = colors[series_index % len(colors)]
+        coordinates = " ".join(
+            f'{x_map(point["emissions_kg_per_mwh"]):.2f},'
+            f'{y_map(point_cost(point)):.2f}'
+            for point in series_points
+        )
+        if len(series_points) > 1:
+            lines.append(
+                f'<polyline class="frontier" style="stroke:{color}" '
+                f'points="{coordinates}"/>'
+            )
+        for index, point in enumerate(series_points, start=1):
+            x = x_map(point["emissions_kg_per_mwh"])
+            y = y_map(point_cost(point))
+            label = f"{name + ' · ' if name else ''}{index}. {point['mix']}"
+            lines.extend([
+                f'<circle class="point" fill="{color}" cx="{x:.2f}" '
+                f'cy="{y:.2f}" r="7"/>',
+                f'<text x="{x + 11:.2f}" y="{y - 10:.2f}" '
+                f'font-size="12">{esc(label)}</text>',
+            ])
+        if series_key:
+            legend_y = 52 + series_index * 20
+            lines.extend([
+                f'<circle fill="{color}" cx="{width - right - 110}" '
+                f'cy="{legend_y - 4}" r="5"/>',
+                f'<text x="{width - right - 98}" y="{legend_y}" '
+                f'font-size="12">{esc(name)}</text>',
+            ])
     lines.append("</svg>")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

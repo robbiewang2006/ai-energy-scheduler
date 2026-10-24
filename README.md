@@ -111,10 +111,10 @@ Outputs are written to `results/`. Run automated tests with:
 python -m unittest discover -s tests
 ```
 
-## 1 MWh cost-emissions frontier
+## Annual 1 MWh cost-emissions frontiers
 
-Plot feasible source mixes for 1 MWh, using source prices averaged across the
-hourly horizon and hourly availability summed over that horizon:
+Plot each calendar year's feasible source mixes for 1 MWh, using monthly
+prices and hourly availability from that year only:
 
 ```bash
 python plot_frontier.py
@@ -123,22 +123,26 @@ python plot_frontier.py --data-dir /tmp/my-energy-inputs --target-mwh 2
 ```
 
 The command writes `results/emissions_price_frontier.svg` and
-`results/emissions_price_frontier.csv`. It optimizes feasible source mixes and
-keeps only nondominated points; the line connects those frontier points. The
-CSV records each mix and its source price categories. Source/month rows with a
-missing price or source emission factor are omitted rather than assigned zero.
-If configured available energy is insufficient for the target, the command
-fails instead of extrapolating availability.
+`results/emissions_price_frontier.csv`. Each year is optimized independently;
+colors and the CSV `year` column identify its nondominated points. The plot
+shows total procurement cost in RMB for the selected MWh target against
+emissions in kgCO2(e)/MWh; the CSV also includes average RMB/kWh. It uses
+ordinary configured source availability and prices only; disruption scenarios
+are intentionally excluded. Source/month rows with a missing price
+or source emission factor are omitted rather than assigned zero. If configured
+available energy in any year is insufficient for the target, the command fails
+instead of extrapolating availability.
 
 The bundled synthetic profile has one day of data and only two sources; its
-onsite solar supply is availability-limited, so it produces one frontier point
-for the best feasible mix, not a rich market-wide curve. The prices and
+onsite solar supply is availability-limited, so it produces one annual frontier
+point for the best feasible mix, not a rich market-wide curve. The prices and
 emissions are hypothetical explicit assumptions. Different price categories
 (such as customer tariffs, generator selling prices, and generation cost/LCOE)
-remain identified on each plotted point and should not be interpreted as
+remain identified in the CSV and should not be interpreted as
 interchangeable observed market prices. The chart is an energy procurement
 comparison over the supplied horizon, not a battery dispatch or grid-mix
-analysis.
+analysis. For a multi-year comparison, provide a contiguous hourly profile
+covering each year to be plotted.
 
 The checked-in [synthetic example plot](examples/synthetic/results/emissions_price_frontier.svg)
 and [frontier data](examples/synthetic/results/emissions_price_frontier.csv)

@@ -6,6 +6,7 @@ import unittest
 from energy_data import load_energy_inputs
 from energy_data import fuel_litres_to_electricity_kwh, fuel_price_rmb_per_kwh
 from frontier import (
+    calendar_year_frontiers,
     pareto_frontier,
     write_frontier_csv,
     write_frontier_svg,
@@ -731,6 +732,42 @@ class MonthlyEnergyInputTests(unittest.TestCase):
         self.assertIn("<svg", svg_content)
         self.assertIn("Average price (RMB/kWh)", svg_content)
         self.assertIn("Emissions (kgCO2/MWh)", svg_content)
+
+    def test_annual_frontier_plot_keeps_years_separate_and_ignores_scenarios(self):
+        inputs = write_bundle(
+            self.directory,
+            timestamps=["2024-12-31T23:00", "2025-01-01T00:00"],
+            prices=[
+                _price_row(GRID, "2024-12", 0.2),
+                _price_row(GRID, "2025-01", 0.7),
+            ],
+            scenario_impacts=[
+                {
+                    "scenario": "grid_outage",
+                    "source_id": "ordinary_grid",
+                    "availability_multiplier": "0",
+                    "price_multiplier": "10",
+                    "notes": "Should not affect annual procurement frontier.",
+                },
+            ],
+        )
+        points, unit = calendar_year_frontiers(inputs, target_mwh=0.1)
+        self.assertEqual(unit, "kgCO2/kWh")
+        self.assertEqual([point["year"] for point in points], [2024, 2025])
+        self.assertAlmostEqual(points[0]["avg_price_rmb_per_kwh"], 0.2)
+        self.assertAlmostEqual(points[1]["avg_price_rmb_per_kwh"], 0.7)
+        self.assertAlmostEqual(points[0]["cost_rmb"], 20)
+        self.assertAlmostEqual(points[1]["cost_rmb"], 70)
+
+        csv_path = self.directory / "annual_frontier.csv"
+        svg_path = self.directory / "annual_frontier.svg"
+        write_frontier_csv(csv_path, points, unit, include_year=True)
+        write_frontier_svg(svg_path, points, unit, 0.1, series_key="year")
+        self.assertIn("year,cost_rmb,energy_kwh", csv_path.read_text(encoding="utf-8"))
+        svg = svg_path.read_text(encoding="utf-8")
+        self.assertIn(">2024</text>", svg)
+        self.assertIn(">2025</text>", svg)
+        self.assertIn("Procurement cost (RMB for 0.1 MWh)", svg)
 
 
 if __name__ == "__main__":
