@@ -122,7 +122,7 @@ class EnergyInputs:
 
 
 def fuel_litres_to_electricity_kwh(fuel_litres, fuel_consumption_l_per_kwh):
-    """Convert generator fuel volume to electricity using its configured rate."""
+    """Convert reserve fuel volume to output using the generator's own rate."""
     if (
         not math.isfinite(fuel_litres)
         or fuel_litres < 0
@@ -551,6 +551,7 @@ def load_emission_factors(path, sources):
 
 
 def load_scenario_impacts(path, sources):
+    """Load explicit deviations from ordinary availability and monthly prices."""
     if not Path(path).exists():
         return {}
     rows = _read_csv(path, SCENARIO_IMPACT_COLUMNS)

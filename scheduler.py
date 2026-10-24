@@ -63,6 +63,7 @@ def _scenario_impact(source_id, scenario, inputs):
 
 
 def _scenario_availability(source_id, hour, scenario, inputs):
+    # A source without a scenario row retains its ordinary hourly availability.
     impact = _scenario_impact(source_id, scenario, inputs)
     multiplier = impact.availability_multiplier if impact else 1.0
     return inputs.availability_kwh[source_id][hour] * multiplier
@@ -170,6 +171,7 @@ def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS, scenario="ordinary"):
             ),
             key=lambda source: (source.dispatch_order, source.source_id),
         )
+        # Dispatch order can reserve emergency generators for actual shortfalls.
         for source in other_sources:
             available = _scenario_availability(
                 source.source_id, hour, scenario, inputs
