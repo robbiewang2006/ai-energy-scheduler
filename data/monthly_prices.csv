@@ -1,0 +1,25 @@
+source_id,month,price,unit,price_category,status,publisher,source_url,document_title,publication_date,applicable_period,geography,original_units,method,notes
+onsite_solar,2025-01,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-01,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-01,,RMB/kWh,customer_purchase_price,missing,,,,2025-01,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-02,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-02,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-02,,RMB/kWh,customer_purchase_price,missing,,,,2025-02,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-03,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-03,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-03,,RMB/kWh,customer_purchase_price,missing,,,,2025-03,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-04,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-04,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-04,,RMB/kWh,customer_purchase_price,missing,,,,2025-04,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-05,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-05,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-05,,RMB/kWh,customer_purchase_price,missing,,,,2025-05,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-06,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-06,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-06,,RMB/kWh,customer_purchase_price,missing,,,,2025-06,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-07,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-07,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-07,,RMB/kWh,customer_purchase_price,missing,,,,2025-07,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-08,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-08,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-08,,RMB/kWh,customer_purchase_price,missing,,,,2025-08,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-09,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-09,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-09,,RMB/kWh,customer_purchase_price,missing,,,,2025-09,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-10,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-10,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-10,,RMB/kWh,customer_purchase_price,missing,,,,2025-10,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-11,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-11,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-11,,RMB/kWh,customer_purchase_price,missing,,,,2025-11,Shanghai,,,No verified Shanghai customer tariff value entered.
+onsite_solar,2025-12,,RMB/kWh,estimated_generation_cost_lcoe,missing,,,,2025-12,Shanghai,,,No verified source-specific monthly value available.
+ordinary_grid,2025-12,,RMB/kWh,customer_purchase_price,missing,,,,2025-12,Shanghai,,,No verified Shanghai customer tariff value entered.

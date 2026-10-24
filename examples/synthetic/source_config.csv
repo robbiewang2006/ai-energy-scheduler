@@ -1,0 +1,3 @@
+source_id,technology,supply_type,price_unit,max_power_kw,dispatch_order,fuel_consumption_l_per_kwh,fuel_inventory_l
+onsite_solar,solar_pv,onsite,RMB/kWh,42,10,,
+ordinary_grid,ordinary_grid,grid,RMB/kWh,100,100,,

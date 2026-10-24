@@ -1,0 +1,3 @@
+source_id,technology,supply_type,price_unit,max_power_kw,dispatch_order,fuel_consumption_l_per_kwh,fuel_inventory_l,notes
+onsite_solar,solar_pv,onsite,RMB/kWh,0,10,,,Template placeholder; disabled until actual capacity and hourly availability are supplied.
+ordinary_grid,ordinary_grid,grid,RMB/kWh,0,100,,,Template placeholder; set a documented import limit before use.
