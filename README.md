@@ -1,5 +1,17 @@
 # ai-energy-scheduler
 
+## Project entry points
+
+- `mother.py` runs the primary scheduler and uses `examples/synthetic/` as its
+  default input bundle.
+- `plot_frontier.py` generates annual procurement frontiers from a configured
+  input bundle.
+- `baseline.py` runs an independent ASAP/FIFO baseline.
+
+The synthetic bundle is retained because it provides runnable default inputs
+and is also used by the test suite. The files in `data/` are templates and
+provenance records, not a complete runnable input bundle.
+
 ## Run the synthetic example
 
 The default dataset is a small, explicitly hypothetical one-day scenario. It is

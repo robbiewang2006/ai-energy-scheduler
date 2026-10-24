@@ -2,7 +2,7 @@
 """baseline.py - No-scheduling (ASAP, back-to-back) baseline.
 
 This is an *independent* program: it reads the CSVs directly and does not
-import scheduler.py. It simulates one year (default 8760 hourly slots) under
+import the main simulator. It simulates one year (default 8760 hourly slots) under
 the simplest possible policy:
 
     Every time a task arrives (at its `start_time`), place it at the first
@@ -11,7 +11,7 @@ the simplest possible policy:
 
 Each task occupies `duration` consecutive hours and draws
 `energy_needed / duration` kW in each of those hours (the facility load is
-scaled by PUE, matching scheduler.py). All energy is charged to a single
+scaled by PUE, matching the main simulator). All energy is charged to a single
 supply source (default the grid). The printed objective is
 
     objective = total_cost + carbon_price * total_emissions
