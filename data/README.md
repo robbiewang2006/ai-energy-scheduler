@@ -5,14 +5,14 @@ not a complete set of verified market prices or emissions factors. The 2026
 onsite-solar prices in `monthly_prices.csv` are unweighted averages of the
 user-provided Shandong, Shanxi, and Sichuan values, converted from RMB/MWh to
 RMB/kWh; their provenance and method are recorded in each row. They are not
-independently verified or Shanghai-specific. The ordinary-grid prices and
-emissions factors remain blank with `status=missing`; this is a missing-value
-marker, not zero. The official-site requests made for this change failed at DNS
-lookup, so no official source-derived numeric prices or factors could be
-verified. `source_config.csv` uses zero-capacity
-placeholders that must be replaced. This includes source-specific monthly
-contracts, Shanghai tariffs and diesel prices, and the underlying official
-emissions-factor table.
+independently verified or Shanghai-specific. Prices for wind, hydroelectric,
+nuclear, coal-fired, and natural-gas-fired electricity, and emissions factors
+for all listed sources, remain blank with `status=missing`; this is a
+missing-value marker, not zero. The official-site requests made for this
+change failed at DNS lookup, so no official source-derived numeric prices or
+factors could be verified. `source_config.csv` uses zero-capacity
+placeholders that must be replaced. This includes source-specific contract
+prices, diesel prices, and the underlying official emissions-factor table.
 
 Start verification with:
 
@@ -65,16 +65,16 @@ operational CO2), kgCO2e/kWh (lifecycle), or kgCO2/litre (direct diesel
 combustion), with reference year, geography, boundary, source, and method.
 Direct and lifecycle factors cannot be combined in one objective.
 
-`source_config.csv` records supply type (`onsite`, `contract`, or `grid`),
-power capacity, dispatch order, and optional diesel fuel constraints. Its
+`source_config.csv` records supply type (`onsite`, `contract`, or optional
+`grid`), power capacity, dispatch order, and optional diesel fuel constraints. Its
 placeholder capacities are not operational limits or observations.
 `hourly_availability.csv` is separate from monthly prices and records the
 timestamped available kWh and protected IT demand. Onsite solar must have zero
-availability at night. Contracts require a delivery profile; grid import is
-limited by both its configured capacity and hourly availability. Use only one
-ordinary-grid source: do not add the grid's generation mix again as separate
-grid supply. The energy-source list is configurable; nuclear in a contract is
-not evidence of an onsite reactor or any Huawei ownership.
+availability at night. Contracts require a delivery profile; grid import, if
+configured, is limited by both its configured capacity and hourly availability.
+Keep the grid's generation mix separate from source-specific contracts. The
+energy-source list is configurable; nuclear in a contract is not evidence of
+an onsite reactor or any Huawei ownership.
 - `scenario_impacts.csv` records optional, explicitly assumed source-specific
 availability and price multipliers for outages or supply disruptions. Use
 verified exposure data to configure shocks to concentrated gas imports or

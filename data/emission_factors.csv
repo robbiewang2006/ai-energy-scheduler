@@ -1,3 +1,7 @@
 source_id,factor,unit,boundary,reference_year,geography,status,publisher,source_url,document_title,publication_date,applicable_period,method,notes
-onsite_solar,,kgCO2/kWh,direct_operational,unverified,Shanghai,missing,,,,2025,No source-derived factor verified.
-ordinary_grid,,kgCO2/kWh,direct_operational,unverified,Shanghai,missing,,,,2025,Official factor table could not be verified during this work.
+onsite_solar,,kgCO2/kWh,direct_operational,unverified,"Shandong, Shanxi, and Sichuan",missing,,,,2026,No verified source-specific solar emissions factor available.
+wind,,kgCO2/kWh,direct_operational,unverified,not specified,missing,,,,2026,No verified wind emissions factor available.
+hydroelectric,,kgCO2/kWh,direct_operational,unverified,not specified,missing,,,,2026,No verified hydroelectric emissions factor available.
+nuclear,,kgCO2/kWh,direct_operational,unverified,not specified,missing,,,,2026,No verified nuclear emissions factor available.
+coal_fired,,kgCO2/kWh,direct_operational,unverified,not specified,missing,,,,2026,No verified coal-fired emissions factor available.
+natural_gas_fired,,kgCO2/kWh,direct_operational,unverified,not specified,missing,,,,2026,No verified natural-gas-fired emissions factor available.
