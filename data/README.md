@@ -4,7 +4,7 @@ These CSVs record input templates and explicit data gaps, not observed numeric
 prices or emissions factors. The official-site requests made for this change
 failed at DNS lookup, so no source-derived numeric prices or factors could be
 verified and none are filled in here. `monthly_prices.csv` has a blank
-`status=missing` row for each configured source/month for 2025; this is a
+`status=missing` row for each configured source/month for 2026; this is a
 missing-value marker, not zero. `source_config.csv` uses zero-capacity
 placeholders that must be replaced. This includes source-specific monthly
 contracts, Shanghai tariffs and diesel prices, and the underlying official
