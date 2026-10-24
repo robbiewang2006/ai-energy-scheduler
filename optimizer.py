@@ -7,7 +7,7 @@ from scipy.optimize import linprog, minimize
 
 from scheduler import (
     ANNUAL_DEMAND_REFERENCE_KWH, CARBON_PRICE_RMB_PER_KG, IT_CAPACITY_KW, PUE,
-    SYNTHETIC_INPUTS, SupplyShortage, build_schedule, constraint_violation,
+    SYNTHETIC_INPUTS, InitializationFailure, SupplyShortage, build_schedule, constraint_violation,
     dispatch, summarize, validate_inputs,
 )
 
@@ -158,7 +158,7 @@ def optimize_schedule(
 
     value = evaluate(point)
     if value is None:
-        raise ValueError(
+        raise InitializationFailure(
             "Cannot initialize a supply-feasible schedule under original dispatch. "
             "Try another initialization; this is not proof of global infeasibility."
         )

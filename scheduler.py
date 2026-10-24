@@ -40,6 +40,10 @@ class SupplyShortage(ValueError):
 class PlacementFailure(ValueError):
     """A baseline heuristic could not place all requested job energy."""
 
+
+class InitializationFailure(ValueError):
+    """The optimizer could not find a supply-feasible initial schedule."""
+
 SYNTHETIC_INPUTS = load_energy_inputs(
     Path(__file__).resolve().parent / "examples" / "synthetic"
 )
@@ -356,12 +360,21 @@ def build_schedule(jobs, battery, smart=False, quantum_kwh=1.0,
                 for hour in candidates:
                     amount = min(quantum_kwh, remaining, spare[hour])
                     schedule[job.name][hour] += amount
-                    scores[hour] = objective(
-                        schedule, battery, carbon_price, inputs, scenario
-                    )
-                    schedule[job.name][hour] -= amount
+                    try:
+                        scores[hour] = objective(
+                            schedule, battery, carbon_price, inputs, scenario
+                        )
+                    except SupplyShortage:
+                        continue
+                    finally:
+                        schedule[job.name][hour] -= amount
 
-                chosen = min(candidates, key=lambda hour: (scores[hour], hour))
+                if not scores:
+                    raise PlacementFailure(
+                        f"No supply-feasible greedy placement for {job.name}; "
+                        "this heuristic failure is not proof of infeasibility."
+                    )
+                chosen = min(scores, key=lambda hour: (scores[hour], hour))
             else:
                 chosen = min(candidates)
 
@@ -550,7 +563,7 @@ def main(argv=None):
                     inputs=inputs, scenario=args.scenario,
                 )
             rows = dispatch(schedule, battery, inputs, args.scenario)
-        except (SupplyShortage, PlacementFailure) as error:
+        except (SupplyShortage, PlacementFailure, InitializationFailure) as error:
             summaries.append({"strategy": name, "feasible": False, "status": str(error)})
             continue
         verify_schedule(JOBS, schedule, inputs)
@@ -575,7 +588,7 @@ def main(argv=None):
 
     for result in summaries:
         if not result["feasible"]:
-            print(f"{result['strategy']}: infeasible: {result['status']}")
+            print(f"{result['strategy']}: no feasible schedule returned: {result['status']}")
             continue
         print(
             f"{result['strategy']:20s} "

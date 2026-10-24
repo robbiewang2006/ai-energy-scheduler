@@ -3,6 +3,7 @@ from pathlib import Path
 import csv
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -10,7 +11,7 @@ from energy_data import load_energy_inputs
 from optimizer import finite_difference_gradient, optimize_schedule
 from scheduler import (
     Battery, IT_CAPACITY_KW, JOBS, Job, PUE, SYNTHETIC_INPUTS,
-    constraint_violation, dispatch, main, objective,
+    InitializationFailure, build_schedule, constraint_violation, dispatch, main, objective,
     summarize, verify_schedule,
 )
 from test_scheduler import GRID, _price_row, write_bundle
@@ -166,6 +167,13 @@ class GradientSchedulerTests(unittest.TestCase):
         )
         self.assertEqual(first, second)
 
+    def test_reference_energy_does_not_change_optimizer(self):
+        default = optimize_schedule(self.jobs, self.battery, self.inputs)
+        custom = optimize_schedule(
+            self.jobs, self.battery, self.inputs, annual_demand_reference_kwh=500
+        )
+        self.assertEqual(default, custom)
+
     def test_initialization_methods_and_iteration_limit(self):
         for initialization in ("immediate", "greedy", "uniform", "random"):
             schedule, history = optimize_schedule(
@@ -189,6 +197,15 @@ class GradientSchedulerTests(unittest.TestCase):
             optimize_schedule(self.jobs, self.battery, inputs)
         # A feasible schedule exists despite the failed initialization.
         dispatch({"tiny": [0.0, 10.0]}, self.battery, inputs)
+        # Greedy skips the unavailable first hour rather than aborting on a probe.
+        baseline = build_schedule(
+            self.jobs, self.battery, smart=True, inputs=inputs
+        )
+        self.assertEqual(baseline["tiny"], [0.0, 10.0])
+        schedule, _ = optimize_schedule(
+            self.jobs, self.battery, inputs, initialization="greedy"
+        )
+        dispatch(schedule, self.battery, inputs)
 
     def test_line_search_rejects_supply_infeasible_steps(self):
         inputs = write_bundle(
@@ -251,6 +268,34 @@ class GradientSchedulerTests(unittest.TestCase):
                 self.assertIn(f"source_{source_id}_price_status", row)
                 self.assertIn(f"source_{source_id}_emission_boundary", row)
 
+    def test_scenario_preserves_monthly_prices_and_source_limits(self):
+        inputs = write_bundle(
+            self.path, prices=[
+                _price_row(GRID, "2024-12", 0.9),
+                _price_row(GRID, "2025-01", 0.1),
+            ],
+            scenario_impacts=[{
+                "scenario": "shock", "source_id": "ordinary_grid",
+                "availability_multiplier": "0.5", "price_multiplier": "2",
+                "notes": "test assumption",
+            }],
+        )
+        schedule, _ = optimize_schedule(
+            self.jobs, self.battery, inputs, scenario="shock"
+        )
+        shock = dispatch(schedule, self.battery, inputs, "shock")
+        ordinary = dispatch(schedule, self.battery, inputs)
+        self.assertEqual([row["scenario"] for row in shock], ["shock", "shock"])
+        self.assertEqual(
+            [row["source_ordinary_grid_effective_price_rmb_per_kwh"] for row in shock],
+            [1.8, 0.2],
+        )
+        self.assertAlmostEqual(sum(row["electricity_cost_rmb"] for row in shock),
+                               2 * sum(row["electricity_cost_rmb"] for row in ordinary))
+        self.assertEqual(sum(row["emissions_kg"] for row in shock),
+                         sum(row["emissions_kg"] for row in ordinary))
+        self.assertTrue(all(row["source_ordinary_grid_kwh"] <= 50 for row in shock))
+
     def test_cli_exports_hourly_history_and_comparison(self):
         output = self.path / "results"
         main(["--max-iterations", "1", "--output-dir", str(output)])
@@ -269,6 +314,19 @@ class GradientSchedulerTests(unittest.TestCase):
         with (output / "optimization_history.csv").open() as file:
             history = list(csv.DictReader(file))
         self.assertEqual([row["iteration"] for row in history], ["0", "1"])
+
+    def test_cli_exports_comparison_when_gradient_initialization_fails(self):
+        output = self.path / "failed"
+        with patch("optimizer.optimize_schedule", side_effect=InitializationFailure(
+            "Cannot initialize; not proof of global infeasibility."
+        )):
+            main(["--output-dir", str(output)])
+        with (output / "comparison.csv").open() as file:
+            comparison = list(csv.DictReader(file))
+        self.assertEqual(len(comparison), 4)
+        self.assertEqual(comparison[-1]["feasible"], "False")
+        self.assertIn("not proof", comparison[-1]["status"])
+        self.assertEqual(comparison[0]["feasible"], "True")
 
 
 if __name__ == "__main__":
