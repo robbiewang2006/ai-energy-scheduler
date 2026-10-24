@@ -3,6 +3,7 @@ from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from energy_data import (
     load_emission_factors,
@@ -13,6 +14,7 @@ from energy_data import (
 from energy_data import fuel_litres_to_electricity_kwh, fuel_price_rmb_per_kwh
 from frontier import (
     calendar_year_frontiers,
+    format_energy_target,
     pareto_frontier,
     write_frontier_csv,
     write_frontier_svg,
@@ -29,6 +31,7 @@ from mother import (
     time_penalty,
     verify_schedule,
 )
+from plot_frontier import main as plot_frontier_main
 
 
 PRICE_FIELDS = [
@@ -912,6 +915,29 @@ class MonthlyEnergyInputTests(unittest.TestCase):
     def test_frontier_fails_if_configured_sources_cannot_supply_target(self):
         with self.assertRaisesRegex(ValueError, "less than the"):
             pareto_frontier(SYNTHETIC_INPUTS, target_mwh=100)
+
+    def test_frontier_api_defaults_to_ten_twh(self):
+        self.assertEqual(format_energy_target(10_000_000), "10 TWh")
+        with self.assertRaisesRegex(ValueError, "10000000000.000 kWh target"):
+            pareto_frontier(SYNTHETIC_INPUTS)
+        with self.assertRaisesRegex(ValueError, "10000000000.000 kWh target"):
+            calendar_year_frontiers(SYNTHETIC_INPUTS)
+
+    def test_frontier_cli_defaults_to_ten_twh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch(
+                "plot_frontier.load_energy_inputs", return_value=SYNTHETIC_INPUTS
+            ), patch(
+                "plot_frontier.calendar_year_frontiers",
+                return_value=([], "kgCO2/kWh"),
+            ) as calculate_frontiers, patch(
+                "plot_frontier.write_frontier_svg"
+            ), patch("plot_frontier.write_frontier_csv"):
+                plot_frontier_main(["--output-dir", directory])
+
+        calculate_frontiers.assert_called_once_with(
+            SYNTHETIC_INPUTS, 10_000_000.0
+        )
 
     def test_frontier_normalizes_diesel_emissions_to_kgco2(self):
         diesel = {

@@ -4,6 +4,7 @@ from pathlib import Path
 from energy_data import load_energy_inputs
 from frontier import (
     calendar_year_frontiers,
+    format_energy_target,
     write_frontier_csv,
     write_frontier_svg,
 )
@@ -11,7 +12,7 @@ from frontier import (
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Plot annual procurement frontiers (default target: 1 MWh)."
+        description="Plot annual procurement frontiers (default target: 10 TWh)."
     )
     parser.add_argument(
         "--data-dir",
@@ -22,8 +23,8 @@ def main(argv=None):
     parser.add_argument(
         "--target-mwh",
         type=float,
-        default=1.0,
-        help="energy procurement target in MWh (default: 1)",
+        default=10_000_000.0,
+        help="energy procurement target in MWh (default: 10,000,000 = 10 TWh)",
     )
     parser.add_argument(
         "--output-dir",
@@ -44,7 +45,7 @@ def main(argv=None):
     write_frontier_csv(csv_path, points, emission_unit, include_year=True)
     print(
         f"Wrote {len(points)} annual frontier point(s) for "
-        f"{args.target_mwh:g} MWh across "
+        f"{format_energy_target(args.target_mwh)} across "
         f"{len({point['year'] for point in points})} year(s) to "
         f"{svg_path} and {csv_path}."
     )
