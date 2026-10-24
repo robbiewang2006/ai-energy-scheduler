@@ -276,10 +276,8 @@ def load_sources(path):
         )
     if not sources:
         raise ValueError(f"{path} does not define any energy sources.")
-    if sum(source.supply_type == "grid" for source in sources.values()) != 1:
-        raise ValueError(
-            "Source configuration must include exactly one ordinary grid source."
-        )
+    if sum(source.supply_type == "grid" for source in sources.values()) > 1:
+        raise ValueError("Source configuration cannot include multiple grid sources.")
     return sources
 
 

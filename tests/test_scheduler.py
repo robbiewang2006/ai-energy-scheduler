@@ -1,9 +1,15 @@
 import csv
+from datetime import datetime
 from pathlib import Path
 import tempfile
 import unittest
 
-from energy_data import load_energy_inputs
+from energy_data import (
+    load_emission_factors,
+    load_energy_inputs,
+    load_monthly_prices,
+    load_sources,
+)
 from energy_data import fuel_litres_to_electricity_kwh, fuel_price_rmb_per_kwh
 from frontier import (
     calendar_year_frontiers,
@@ -155,6 +161,102 @@ def write_bundle(
     write("emission_factors.csv", FACTOR_FIELDS, factors)
     write("scenario_impacts.csv", SCENARIO_IMPACT_FIELDS, scenario_impacts)
     return load_energy_inputs(directory)
+
+
+class SolarMarketPriceDataTests(unittest.TestCase):
+    def test_2026_solar_prices_are_three_region_means_in_rmb_per_kwh(self):
+        path = Path(__file__).parent.parent / "data" / "monthly_prices.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            solar_prices = [
+                row for row in csv.DictReader(file)
+                if row["source_id"] == "onsite_solar"
+            ]
+
+        expected_prices = [
+            0.168333333,
+            0.166666667,
+            0.164333333,
+            0.156,
+            0.134666667,
+            0.101166667,
+            0.119333333,
+            0.123666667,
+            0.128236667,
+            0.135166667,
+            0.152666667,
+            0.165666667,
+        ]
+        self.assertEqual(len(solar_prices), 12)
+        for month_number, (row, expected_price) in enumerate(
+            zip(solar_prices, expected_prices), start=1
+        ):
+            with self.subTest(month=row["month"]):
+                self.assertEqual(row["month"], f"2026-{month_number:02d}")
+                self.assertEqual(row["applicable_period"], row["month"])
+                self.assertAlmostEqual(float(row["price"]), expected_price)
+                self.assertEqual(row["unit"], "RMB/kWh")
+                self.assertEqual(row["original_units"], "RMB/MWh")
+                self.assertEqual(row["status"], "derived")
+                self.assertEqual(
+                    row["price_category"], "explicit_user_assumption"
+                )
+                self.assertIn("not independently verified", row["notes"])
+
+    def test_default_energy_template_has_source_types_without_ordinary_grid(self):
+        root = Path(__file__).parent.parent
+        sources = load_sources(root / "data" / "source_config.csv")
+        expected_sources = {
+            "onsite_solar",
+            "wind",
+            "hydroelectric",
+            "nuclear",
+            "coal_fired",
+            "natural_gas_fired",
+        }
+        self.assertEqual(set(sources), expected_sources)
+        self.assertFalse(any(source.supply_type == "grid" for source in sources.values()))
+        timestamps = [
+            datetime(2026, month, 1) for month in range(1, 13)
+        ]
+        prices = load_monthly_prices(
+            root / "data" / "monthly_prices.csv", sources, timestamps
+        )
+        factors = load_emission_factors(
+            root / "data" / "emission_factors.csv", sources
+        )
+        self.assertEqual(len(prices), len(expected_sources) * 12)
+        self.assertEqual(set(factors), expected_sources)
+        self.assertTrue(
+            all(
+                prices[(source_id, f"2026-{month:02d}")].price is None
+                for source_id in expected_sources - {"onsite_solar"}
+                for month in range(1, 13)
+            )
+        )
+        self.assertTrue(all(factor.factor is None for factor in factors.values()))
+
+        with (root / "data" / "monthly_prices.csv").open(
+            newline="", encoding="utf-8"
+        ) as file:
+            prices = list(csv.DictReader(file))
+        with (root / "data" / "emission_factors.csv").open(
+            newline="", encoding="utf-8"
+        ) as file:
+            factors = list(csv.DictReader(file))
+        self.assertEqual(
+            {row["source_id"] for row in prices},
+            expected_sources,
+        )
+        self.assertEqual(
+            {row["source_id"] for row in factors},
+            expected_sources,
+        )
+        self.assertTrue(all(
+            row["status"] == "missing"
+            for row in prices
+            if row["source_id"] != "onsite_solar"
+        ))
+        self.assertTrue(all(row["status"] == "missing" for row in factors))
 
 
 class MonthlyEnergyInputTests(unittest.TestCase):
