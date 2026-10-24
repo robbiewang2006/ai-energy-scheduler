@@ -4,6 +4,11 @@ import tempfile
 import unittest
 
 from energy_data import load_energy_inputs
+from frontier import (
+    pareto_frontier,
+    write_frontier_csv,
+    write_frontier_svg,
+)
 from scheduler import (
     Battery,
     JOBS,
@@ -518,6 +523,126 @@ class MonthlyEnergyInputTests(unittest.TestCase):
         schedule = build_schedule(JOBS, Battery())
         verify_schedule(JOBS, schedule)
         self.assertEqual(len(dispatch(schedule, Battery())), 24)
+
+    def test_frontier_excludes_dominated_supply_options(self):
+        wind = dict(
+            GRID,
+            source_id="wind_contract",
+            technology="wind",
+            supply_type="contract",
+            dispatch_order="1",
+        )
+        dominated = dict(
+            GRID,
+            source_id="high_cost_high_emissions",
+            technology="natural_gas_fired",
+            supply_type="contract",
+            dispatch_order="2",
+            max_power_kw="1000",
+        )
+        wind["max_power_kw"] = "1000"
+        grid = dict(GRID, dispatch_order="3", max_power_kw="1000")
+        sources = [wind, dominated, grid]
+        inputs = write_bundle(
+            self.directory,
+            sources=sources,
+            availability={
+                source["source_id"]: [1000, 1000] for source in sources
+            },
+            prices=[
+                _price_row(source, month, price)
+                for source, price in (
+                    (wind, 0.8),
+                    (dominated, 0.9),
+                    (grid, 0.5),
+                )
+                for month in ("2024-12", "2025-01")
+            ],
+            factors=[
+                _factor_row(wind, 0.2),
+                _factor_row(dominated, 0.9),
+                _factor_row(grid, 0.8),
+            ],
+        )
+        points, unit = pareto_frontier(inputs, target_mwh=1)
+        self.assertEqual(unit, "kgCO2/kWh")
+        self.assertEqual(len(points), 2)
+        self.assertEqual(
+            {point["mix"] for point in points},
+            {
+                "ordinary_grid=100.0%",
+                "wind_contract=100.0%",
+            },
+        )
+        self.assertEqual(
+            {point["emissions_kg_per_mwh"] for point in points},
+            {200.0, 800.0},
+        )
+
+    def test_synthetic_frontier_respects_hourly_supply_limit(self):
+        points, _ = pareto_frontier(SYNTHETIC_INPUTS, target_mwh=1)
+        self.assertEqual(len(points), 1)
+        self.assertIn("onsite_solar=", points[0]["mix"])
+        self.assertIn("ordinary_grid=", points[0]["mix"])
+        self.assertAlmostEqual(points[0]["energy_kwh"], 1000)
+        self.assertAlmostEqual(
+            points[0]["emissions_kg_per_mwh"],
+            points[0]["avg_price_rmb_per_kwh"] / 0.58 * 550,
+        )
+
+    def test_frontier_fails_if_configured_sources_cannot_supply_target(self):
+        with self.assertRaisesRegex(ValueError, "less than the"):
+            pareto_frontier(SYNTHETIC_INPUTS, target_mwh=100)
+
+    def test_frontier_normalizes_diesel_emissions_to_kgco2(self):
+        diesel = {
+            "source_id": "onsite_diesel",
+            "technology": "diesel_generator",
+            "supply_type": "onsite",
+            "price_unit": "RMB/litre",
+            "max_power_kw": "1000",
+            "dispatch_order": "1",
+            "fuel_consumption_l_per_kwh": "0.25",
+            "fuel_inventory_l": "1000",
+        }
+        grid = dict(GRID, max_power_kw="1000")
+        inputs = write_bundle(
+            self.directory,
+            sources=[diesel, grid],
+            availability={
+                "onsite_diesel": [1000, 1000],
+                "ordinary_grid": [1000, 1000],
+            },
+            prices=[
+                _price_row(diesel, month, 1.0)
+                for month in ("2024-12", "2025-01")
+            ] + [
+                _price_row(grid, month, 0.5)
+                for month in ("2024-12", "2025-01")
+            ],
+            factors=[
+                _factor_row(diesel, 2.68),
+                _factor_row(grid, 0.5),
+            ],
+        )
+        points, unit = pareto_frontier(inputs, target_mwh=1)
+        self.assertEqual(unit, "kgCO2/kWh")
+        self.assertEqual(len(points), 2)
+        self.assertIn(670.0, {point["emissions_kg_per_mwh"] for point in points})
+
+    def test_frontier_csv_and_svg_outputs_are_descriptive(self):
+        points, unit = pareto_frontier(SYNTHETIC_INPUTS, target_mwh=1)
+        csv_path = self.directory / "frontier.csv"
+        svg_path = self.directory / "frontier.svg"
+        write_frontier_csv(csv_path, points, unit)
+        write_frontier_svg(svg_path, points, unit, 1)
+        csv_content = csv_path.read_text(encoding="utf-8")
+        svg_content = svg_path.read_text(encoding="utf-8")
+        self.assertIn("avg_price_rmb_per_kwh", csv_content)
+        self.assertIn("emissions_kgCO2_per_MWh", csv_content)
+        self.assertIn("<svg", svg_content)
+        self.assertIn("Average price (RMB/kWh)", svg_content)
+        self.assertIn("Emissions (kgCO2/MWh)", svg_content)
 
 
 if __name__ == "__main__":

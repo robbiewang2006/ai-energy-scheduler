@@ -88,3 +88,36 @@ Outputs are written to `results/`. Run automated tests with:
 ```bash
 python -m unittest discover -s tests
 ```
+
+## 1 MWh cost-emissions frontier
+
+Plot feasible source mixes for 1 MWh, using source prices averaged across the
+hourly horizon and hourly availability summed over that horizon:
+
+```bash
+python plot_frontier.py
+# Choose another dataset or target:
+python plot_frontier.py --data-dir /tmp/my-energy-inputs --target-mwh 2
+```
+
+The command writes `results/emissions_price_frontier.svg` and
+`results/emissions_price_frontier.csv`. It optimizes feasible source mixes and
+keeps only nondominated points; the line connects those frontier points. The
+CSV records each mix and its source price categories. Source/month rows with a
+missing price or source emission factor are omitted rather than assigned zero.
+If configured available energy is insufficient for the target, the command
+fails instead of extrapolating availability.
+
+The bundled synthetic profile has one day of data and only two sources; its
+onsite solar supply is availability-limited, so it produces one frontier point
+for the best feasible mix, not a rich market-wide curve. The prices and
+emissions are hypothetical explicit assumptions. Different price categories
+(such as customer tariffs, generator selling prices, and generation cost/LCOE)
+remain identified on each plotted point and should not be interpreted as
+interchangeable observed market prices. The chart is an energy procurement
+comparison over the supplied horizon, not a battery dispatch or grid-mix
+analysis.
+
+The checked-in [synthetic example plot](examples/synthetic/results/emissions_price_frontier.svg)
+and [frontier data](examples/synthetic/results/emissions_price_frontier.csv)
+were generated from that same hypothetical one-day input bundle.
