@@ -30,6 +30,7 @@ from mother import (
     main,
     time_penalty,
     verify_schedule,
+    _scenario_availability,
 )
 from plot_frontier import main as plot_frontier_main
 
@@ -540,7 +541,7 @@ class MonthlyEnergyInputTests(unittest.TestCase):
             "max_power_kw": "10",
             "dispatch_order": "1",
             "fuel_consumption_l_per_kwh": "0.25",
-            "fuel_inventory_l": "4",
+            "fuel_inventory_l": "8",
         }
         grid = dict(GRID, dispatch_order="2")
         inputs = write_bundle(
@@ -576,6 +577,94 @@ class MonthlyEnergyInputTests(unittest.TestCase):
             sum(row["source_ordinary_grid_kwh"] for row in rows), 8
         )
 
+    def test_non_gas_and_diesel_availability_is_limited(self):
+        solar = dict(
+            GRID,
+            source_id="onsite_solar",
+            technology="solar_pv",
+            supply_type="onsite",
+            dispatch_order="1",
+        )
+        gas = dict(
+            GRID,
+            source_id="gas_contract",
+            technology="natural_gas_fired",
+            supply_type="contract",
+            dispatch_order="2",
+        )
+        diesel = {
+            "source_id": "diesel_reserve",
+            "technology": "diesel_generator",
+            "supply_type": "onsite",
+            "price_unit": "RMB/litre",
+            "max_power_kw": "100",
+            "dispatch_order": "3",
+            "fuel_consumption_l_per_kwh": "0.25",
+            "fuel_inventory_l": "100",
+        }
+        wind = dict(
+            GRID,
+            source_id="wind_contract",
+            technology="wind",
+            supply_type="contract",
+            dispatch_order="4",
+        )
+        inputs = write_bundle(
+            self.directory,
+            sources=[solar, gas, diesel, wind, GRID],
+        )
+
+        self.assertEqual(
+            {
+                source_id: _scenario_availability(source_id, 0, "ordinary", inputs)
+                for source_id in inputs.sources
+            },
+            {
+                "onsite_solar": 10,
+                "gas_contract": 100,
+                "diesel_reserve": 100,
+                "wind_contract": 50,
+                "ordinary_grid": 50,
+            },
+        )
+
+    def test_diesel_reserve_is_larger_in_winter(self):
+        diesel = {
+            "source_id": "diesel_reserve",
+            "technology": "diesel_generator",
+            "supply_type": "onsite",
+            "price_unit": "RMB/litre",
+            "max_power_kw": "100",
+            "dispatch_order": "1",
+            "fuel_consumption_l_per_kwh": "0.25",
+            "fuel_inventory_l": "10",
+        }
+        grid = dict(GRID, dispatch_order="2")
+
+        diesel_energy = {}
+        for season, start in (
+            ("summer", "2025-07-01T00:00"),
+            ("winter", "2025-01-01T00:00"),
+        ):
+            timestamps = [
+                f"{start[:11]}{hour:02d}:00" for hour in range(3)
+            ]
+            inputs = write_bundle(
+                self.directory,
+                timestamps=timestamps,
+                sources=[diesel, grid],
+                availability={
+                    "diesel_reserve": [100, 100, 100],
+                    "ordinary_grid": [100, 100, 100],
+                },
+            )
+            rows = dispatch({}, Battery(), inputs)
+            diesel_energy[season] = sum(
+                row["source_diesel_reserve_kwh"] for row in rows
+            )
+
+        self.assertEqual(diesel_energy, {"summer": 30, "winter": 20})
+
     def test_fuel_volume_converts_to_electricity_and_invalid_rates_fail(self):
         self.assertEqual(fuel_litres_to_electricity_kwh(4, 0.25), 16)
         self.assertEqual(fuel_price_rmb_per_kwh(8, 0.25), 2)
@@ -609,7 +698,7 @@ class MonthlyEnergyInputTests(unittest.TestCase):
             "technology": "solar_pv",
             "supply_type": "onsite",
             "price_unit": "RMB/kWh",
-            "max_power_kw": "20",
+            "max_power_kw": "200",
             "dispatch_order": "1",
             "fuel_consumption_l_per_kwh": "",
             "fuel_inventory_l": "",
@@ -620,7 +709,7 @@ class MonthlyEnergyInputTests(unittest.TestCase):
             timestamps=["2025-01-01T00:00", "2025-01-01T01:00"],
             sources=[solar, grid],
             availability={
-                "onsite_solar": [20, 0],
+                "onsite_solar": [200, 0],
                 "ordinary_grid": [100, 100],
             },
             prices=[
@@ -699,7 +788,7 @@ class MonthlyEnergyInputTests(unittest.TestCase):
             "max_power_kw": "20",
             "dispatch_order": "100",
             "fuel_consumption_l_per_kwh": "0.25",
-            "fuel_inventory_l": "6",
+            "fuel_inventory_l": "12",
         }
         grid = dict(GRID, max_power_kw="100", dispatch_order="1")
         inputs = write_bundle(

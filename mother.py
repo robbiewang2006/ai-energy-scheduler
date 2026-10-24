@@ -37,6 +37,11 @@ HOURS_PER_DAY = 24.0
 # RMB penalty per kWh, per hour of delay, per unit of urgency, for open-ended
 # tasks. 24 * this ≈ "RMB per kWh per day per urgency".
 TIME_PENALTY_RMB_PER_KWH_PER_DAY = 0.5
+NON_PRIORITY_AVAILABILITY_FRACTION = 0.5
+SOLAR_AVAILABILITY_FRACTION = 0.1
+DIESEL_RESERVE_FRACTION = 0.25
+WINTER_DIESEL_RESERVE_FRACTION = 0.5
+WINTER_MONTHS = {12, 1, 2}
 
 
 class SupplyShortage(ValueError):
@@ -128,7 +133,25 @@ def _scenario_impact(source_id, scenario, inputs):
 def _scenario_availability(source_id, hour, scenario, inputs):
     impact = _scenario_impact(source_id, scenario, inputs)
     multiplier = impact.availability_multiplier if impact else 1.0
-    return inputs.availability_kwh[source_id][hour] * multiplier
+    source = inputs.sources[source_id]
+    if source.technology in {"natural_gas_fired", "diesel_generator"}:
+        limit = 1.0
+    elif source.technology == "solar_pv":
+        limit = SOLAR_AVAILABILITY_FRACTION
+    else:
+        limit = NON_PRIORITY_AVAILABILITY_FRACTION
+    return inputs.availability_kwh[source_id][hour] * multiplier * limit
+
+
+def _diesel_reserve_litres(source, timestamp):
+    if source.technology != "diesel_generator":
+        return 0.0
+    fraction = (
+        WINTER_DIESEL_RESERVE_FRACTION
+        if timestamp.month in WINTER_MONTHS
+        else DIESEL_RESERVE_FRACTION
+    )
+    return source.fuel_inventory_l * fraction
 
 
 def _source_accounting(source_id, amount_kwh, timestamp, inputs, scenario):
@@ -260,7 +283,12 @@ def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS, scenario="ordinary"):
                 limit = min(
                     limit,
                     fuel_litres_to_electricity_kwh(
-                        source.fuel_inventory_l - fuel_used_l[source.source_id],
+                        max(
+                            0.0,
+                            source.fuel_inventory_l
+                            - fuel_used_l[source.source_id]
+                            - _diesel_reserve_litres(source, timestamp),
+                        ),
                         source.fuel_consumption_l_per_kwh,
                     ),
                 )
