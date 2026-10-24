@@ -189,7 +189,31 @@ class SolarMarketPriceDataTests(unittest.TestCase):
                 self.assertIn("weighting method not provided", row["method"])
                 self.assertIn("source-specific", row["notes"])
 
-    def test_2026_solar_prices_are_three_region_means_in_rmb_per_kwh(self):
+    def test_2025_wind_prices_are_converted_to_rmb_per_kwh(self):
+        path = Path(__file__).parent.parent / "data" / "monthly_prices.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            wind_prices = [
+                row for row in csv.DictReader(file)
+                if row["source_id"] == "wind" and row["month"].startswith("2025-")
+            ]
+
+        expected_prices = [
+            0.270, 0.230, 0.205, 0.295, 0.295, 0.330,
+            0.265, 0.320, 0.250, 0.290, 0.275, 0.170,
+        ]
+        self.assertEqual(len(wind_prices), 12)
+        for month_number, (row, expected_price) in enumerate(
+            zip(wind_prices, expected_prices), start=1
+        ):
+            with self.subTest(month=row["month"]):
+                self.assertEqual(row["month"], f"2025-{month_number:02d}")
+                self.assertEqual(float(row["price"]), expected_price)
+                self.assertEqual(row["unit"], "RMB/kWh")
+                self.assertEqual(row["original_units"], "元/MWh")
+                self.assertEqual(row["status"], "assumption")
+                self.assertEqual(row["document_title"], "Wind price by month (2025)")
+
+    def test_solar_prices_are_three_region_means_in_rmb_per_kwh(self):
         path = Path(__file__).parent.parent / "data" / "monthly_prices.csv"
         with path.open(newline="", encoding="utf-8") as file:
             solar_prices = [
@@ -221,6 +245,9 @@ class SolarMarketPriceDataTests(unittest.TestCase):
                 self.assertAlmostEqual(float(row["price"]), expected_price)
                 self.assertEqual(row["unit"], "RMB/kWh")
                 self.assertEqual(row["original_units"], "RMB/MWh")
+                self.assertEqual(
+                    row["document_title"], "Solar Energy Market Average by Month"
+                )
                 self.assertEqual(row["status"], "derived")
                 self.assertEqual(
                     row["price_category"], "explicit_user_assumption"
@@ -247,7 +274,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         factors = load_emission_factors(
             root / "data" / "emission_factors.csv", sources
         )
-        self.assertEqual(len(prices), len(expected_sources) * 12)
+        self.assertEqual(len(prices), len(expected_sources) * 12 + 12)
         self.assertEqual(set(factors), expected_sources)
         self.assertTrue(
             all(
@@ -277,7 +304,8 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         self.assertTrue(all(
             row["status"] == "missing"
             for row in prices
-            if row["source_id"] != "onsite_solar"
+            if row["month"].startswith("2026-")
+            and row["source_id"] != "onsite_solar"
         ))
         self.assertTrue(all(row["status"] == "missing" for row in factors))
 
