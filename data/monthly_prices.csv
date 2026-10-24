@@ -1,73 +1,49 @@
 source_id,month,price,unit,price_category,status,publisher,source_url,document_title,publication_date,applicable_period,geography,original_units,method,notes
 onsite_solar,2026-01,0.168333333,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-01,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-01,,RMB/kWh,generator_selling_price,missing,,,,2026-01,,,,,No verified wind source-specific price available.
-hydroelectric,2026-01,,RMB/kWh,generator_selling_price,missing,,,,2026-01,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-01,,RMB/kWh,generator_selling_price,missing,,,,2026-01,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-01,,RMB/kWh,generator_selling_price,missing,,,,2026-01,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-01,,RMB/kWh,generator_selling_price,missing,,,,2026-01,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-02,0.166666667,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-02,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-02,,RMB/kWh,generator_selling_price,missing,,,,2026-02,,,,,No verified wind source-specific price available.
-hydroelectric,2026-02,,RMB/kWh,generator_selling_price,missing,,,,2026-02,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-02,,RMB/kWh,generator_selling_price,missing,,,,2026-02,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-02,,RMB/kWh,generator_selling_price,missing,,,,2026-02,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-02,,RMB/kWh,generator_selling_price,missing,,,,2026-02,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-03,0.164333333,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-03,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-03,,RMB/kWh,generator_selling_price,missing,,,,2026-03,,,,,No verified wind source-specific price available.
-hydroelectric,2026-03,,RMB/kWh,generator_selling_price,missing,,,,2026-03,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-03,,RMB/kWh,generator_selling_price,missing,,,,2026-03,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-03,,RMB/kWh,generator_selling_price,missing,,,,2026-03,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-03,,RMB/kWh,generator_selling_price,missing,,,,2026-03,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-04,0.156000000,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-04,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-04,,RMB/kWh,generator_selling_price,missing,,,,2026-04,,,,,No verified wind source-specific price available.
-hydroelectric,2026-04,,RMB/kWh,generator_selling_price,missing,,,,2026-04,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-04,,RMB/kWh,generator_selling_price,missing,,,,2026-04,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-04,,RMB/kWh,generator_selling_price,missing,,,,2026-04,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-04,,RMB/kWh,generator_selling_price,missing,,,,2026-04,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-05,0.134666667,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-05,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-05,,RMB/kWh,generator_selling_price,missing,,,,2026-05,,,,,No verified wind source-specific price available.
-hydroelectric,2026-05,,RMB/kWh,generator_selling_price,missing,,,,2026-05,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-05,,RMB/kWh,generator_selling_price,missing,,,,2026-05,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-05,,RMB/kWh,generator_selling_price,missing,,,,2026-05,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-05,,RMB/kWh,generator_selling_price,missing,,,,2026-05,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-06,0.101166667,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-06,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-06,,RMB/kWh,generator_selling_price,missing,,,,2026-06,,,,,No verified wind source-specific price available.
-hydroelectric,2026-06,,RMB/kWh,generator_selling_price,missing,,,,2026-06,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-06,,RMB/kWh,generator_selling_price,missing,,,,2026-06,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-06,,RMB/kWh,generator_selling_price,missing,,,,2026-06,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-06,,RMB/kWh,generator_selling_price,missing,,,,2026-06,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-07,0.119333333,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-07,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-07,,RMB/kWh,generator_selling_price,missing,,,,2026-07,,,,,No verified wind source-specific price available.
-hydroelectric,2026-07,,RMB/kWh,generator_selling_price,missing,,,,2026-07,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-07,,RMB/kWh,generator_selling_price,missing,,,,2026-07,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-07,,RMB/kWh,generator_selling_price,missing,,,,2026-07,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-07,,RMB/kWh,generator_selling_price,missing,,,,2026-07,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-08,0.123666667,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-08,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-08,,RMB/kWh,generator_selling_price,missing,,,,2026-08,,,,,No verified wind source-specific price available.
-hydroelectric,2026-08,,RMB/kWh,generator_selling_price,missing,,,,2026-08,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-08,,RMB/kWh,generator_selling_price,missing,,,,2026-08,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-08,,RMB/kWh,generator_selling_price,missing,,,,2026-08,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-08,,RMB/kWh,generator_selling_price,missing,,,,2026-08,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-09,0.128236667,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-09,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-09,,RMB/kWh,generator_selling_price,missing,,,,2026-09,,,,,No verified wind source-specific price available.
-hydroelectric,2026-09,,RMB/kWh,generator_selling_price,missing,,,,2026-09,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-09,,RMB/kWh,generator_selling_price,missing,,,,2026-09,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-09,,RMB/kWh,generator_selling_price,missing,,,,2026-09,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-09,,RMB/kWh,generator_selling_price,missing,,,,2026-09,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-10,0.135166667,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-10,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-10,,RMB/kWh,generator_selling_price,missing,,,,2026-10,,,,,No verified wind source-specific price available.
-hydroelectric,2026-10,,RMB/kWh,generator_selling_price,missing,,,,2026-10,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-10,,RMB/kWh,generator_selling_price,missing,,,,2026-10,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-10,,RMB/kWh,generator_selling_price,missing,,,,2026-10,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-10,,RMB/kWh,generator_selling_price,missing,,,,2026-10,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-11,0.152666667,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-11,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-11,,RMB/kWh,generator_selling_price,missing,,,,2026-11,,,,,No verified wind source-specific price available.
-hydroelectric,2026-11,,RMB/kWh,generator_selling_price,missing,,,,2026-11,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-11,,RMB/kWh,generator_selling_price,missing,,,,2026-11,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-11,,RMB/kWh,generator_selling_price,missing,,,,2026-11,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-11,,RMB/kWh,generator_selling_price,missing,,,,2026-11,,,,,No verified natural-gas-fired source-specific price available.
 onsite_solar,2026-12,0.165666667,RMB/kWh,explicit_user_assumption,derived,User-provided image,https://github.com/user-attachments/assets/080a0170-5f9c-417f-8b59-e228bc77b140,Solar Energy Market Average by Month (2026),not provided,2026-12,"Shandong, Shanxi, and Sichuan (unweighted average)",RMB/MWh,"Arithmetic mean of the three regional monthly prices; divided by 1,000 to convert RMB/MWh to RMB/kWh.","Derived from user-provided values; not independently verified or Shanghai-specific."
 wind,2026-12,,RMB/kWh,generator_selling_price,missing,,,,2026-12,,,,,No verified wind source-specific price available.
-hydroelectric,2026-12,,RMB/kWh,generator_selling_price,missing,,,,2026-12,,,,,No verified hydroelectric source-specific price available.
 nuclear,2026-12,,RMB/kWh,generator_selling_price,missing,,,,2026-12,,,,,No verified nuclear source-specific price available.
-coal_fired,2026-12,,RMB/kWh,generator_selling_price,missing,,,,2026-12,,,,,No verified coal-fired source-specific price available.
 natural_gas_fired,2026-12,,RMB/kWh,generator_selling_price,missing,,,,2026-12,,,,,No verified natural-gas-fired source-specific price available.
