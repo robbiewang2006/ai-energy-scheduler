@@ -10,12 +10,14 @@ user-provided Shandong, Shanxi, and Sichuan values, converted from RMB/MWh to
 RMB/kWh; they are not independently verified or Shanghai-specific. The 2025
 natural-gas-fired prices are user-provided estimates with unspecified
 estimation method and geography, not verified market prices. Nuclear prices
-are the user-provided 0.3932 RMB/kWh assumption for every month. Diesel prices
-remain blank because no source-specific values are available. The 2025
-aggregate estimated weighted fuel costs are recorded separately in
-`estimated_weighted_fuel_cost.csv`; their weighting method and geography are
-unspecified, so they are not source-specific dispatch prices. Other
-source-specific prices remain blank; this is a missing value marker, not zero.
+are the user-provided 0.3932 RMB/kWh assumption for every month. Per user
+request, the 2025 estimated weighted fuel costs from the supplied image are also
+entered as the `onsite_diesel` prices in `monthly_prices.csv`. They are
+unverified aggregate assumptions, not source-specific generator costs; their
+weighting method and geography are unspecified. The monthly profile has no year
+and repeats for every simulation year. The original 2025 values and provenance
+are retained in `estimated_weighted_fuel_cost.csv`. Other source-specific prices
+remain blank; this is a missing value marker, not zero.
 
 The lifecycle emissions values in `emission_factors.csv` were provided as
 general DeepSeek data and converted from gCO2e/kWh to kgCO2e/kWh. Their

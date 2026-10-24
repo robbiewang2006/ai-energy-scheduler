@@ -271,6 +271,10 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         prices = load_monthly_prices(
             root / "data" / "monthly_prices.csv", sources, timestamps
         )
+        expected_diesel_prices = [
+            1.48, 1.47, 1.45, 1.39, 1.33, 1.33,
+            1.34, 1.33, 1.31, 1.30, 1.30, 1.28,
+        ]
         factors = load_emission_factors(
             root / "data" / "emission_factors.csv", sources
         )
@@ -278,7 +282,8 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         self.assertEqual(set(factors), expected_sources)
         self.assertTrue(
             all(
-                prices[(source_id, f"{year}-{month:02d}")].price is None
+                prices[(source_id, f"{year}-{month:02d}")].price
+                == expected_diesel_prices[month - 1]
                 for source_id in {"onsite_diesel"}
                 for year in (2025, 2026)
                 for month in range(1, 13)
@@ -330,11 +335,15 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             row["month"] in {f"{month:02d}" for month in range(1, 13)}
             for row in prices
         ))
-        self.assertTrue(all(
-            not row["price"]
+        diesel_prices = [
+            float(row["price"])
             for row in prices
             if row["source_id"] == "onsite_diesel"
-        ))
+        ]
+        self.assertEqual(
+            diesel_prices,
+            expected_diesel_prices,
+        )
         self.assertEqual(
             {row["source_id"] for row in factors},
             expected_sources,
