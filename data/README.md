@@ -1,14 +1,19 @@
 # Data provenance and limitations
 
-These CSVs contain user-provided derived assumptions and explicit data gaps,
-not a complete set of verified market prices or emissions factors. The 2026
-onsite-solar prices in `monthly_prices.csv` are unweighted averages of the
-user-provided Shandong, Shanxi, and Sichuan values, converted from RMB/MWh to
-RMB/kWh; their provenance and method are recorded in each row. They are not
-independently verified or Shanghai-specific. Prices for wind, hydroelectric,
-nuclear, coal-fired, and natural-gas-fired electricity, and emissions factors
-for all listed sources, remain blank with `status=missing`; this is a
-missing-value marker, not zero. The official-site requests made for this
+These CSVs contain user-provided assumptions and explicit data gaps, not a
+complete set of verified market prices or emissions factors. The price data
+cover 2025–2026. The 2025 wind prices in `monthly_prices.csv` are user-provided
+values converted from 元/MWh to RMB/kWh; their provenance and method are
+recorded in each row, but they are not independently verified. The onsite-solar
+prices are unweighted averages of the user-provided Shandong, Shanxi, and
+Sichuan values, converted from RMB/MWh to RMB/kWh. They are not independently
+verified or Shanghai-specific. The 2025 aggregate estimated weighted fuel costs
+are recorded separately in `estimated_weighted_fuel_cost.csv`; their weighting
+method and geography are unspecified, so they are not source-specific dispatch
+prices. Source-specific prices for wind outside the provided 2025 series,
+nuclear, and natural-gas-fired electricity, and emissions factors for all
+listed sources, remain blank with `status=missing`; this is a missing-value
+marker, not zero. The official-site requests made for this
 change failed at DNS lookup, so no official source-derived numeric prices or
 factors could be verified. `source_config.csv` uses zero-capacity
 placeholders that must be replaced. This includes source-specific contract
@@ -35,8 +40,8 @@ grid import factor.
 
 No comparable source-classified Shanghai monthly price series could be
 verified. A Shanghai retail tariff, if later entered, must use
-`customer_purchase_price`; it must not be described as a solar, nuclear, coal,
-gas, hydro, wind, or diesel-generator electricity price. Diesel notices publish
+`customer_purchase_price`; it must not be described as a source-specific
+generator electricity price. Diesel notices publish
 maximum retail prices with effective dates, not actual transaction prices or
 monthly averages. A day-weighted average of those notices is derived data and
 must be documented as such.

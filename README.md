@@ -47,9 +47,8 @@ The input directory has four required CSV files plus an optional scenario file:
 
 `supply_type` must be `onsite`, `contract`, or `grid`; grid import is optional.
 Keep source-specific contracts distinct from an ordinary grid source, and do
-not add grid technologies (such as coal or nuclear generation mix) as extra
-grid supply. Source IDs and technologies are configurable: solar PV,
-hydroelectric, nuclear, coal-fired electricity, natural-gas-fired electricity,
+not add generation technologies as extra grid supply. Source IDs and
+technologies are configurable: solar PV, nuclear, natural-gas-fired electricity,
 wind, and onsite diesel can be represented; additional technologies can be
 added by configuration. The `data/` template lists source types without an
 ordinary-grid entry. The runnable synthetic example still demonstrates onsite
@@ -58,8 +57,8 @@ makes no claim about Huawei asset ownership. Corporate annual renewable
 percentages are not hourly source-availability profiles.
 
 The technology identifiers used by the templates include `solar_pv`, `wind`,
-`hydroelectric`, `nuclear`, `coal_fired`, `natural_gas_fired`, and
-`diesel_generator`; `ordinary_grid` remains available for optional imports.
+`nuclear`, `natural_gas_fired`, and `diesel_generator`; `ordinary_grid` remains
+available for optional imports.
 Other non-grid identifiers may be added in `source_config.csv`.
 
 Diesel prices remain in RMB/litre and are multiplied by the configured

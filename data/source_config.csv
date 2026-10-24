@@ -1,7 +1,5 @@
 source_id,technology,supply_type,price_unit,max_power_kw,dispatch_order,fuel_consumption_l_per_kwh,fuel_inventory_l,notes
 onsite_solar,solar_pv,onsite,RMB/kWh,0,10,,,Template placeholder; disabled until actual capacity and hourly availability are supplied.
 wind,wind,contract,RMB/kWh,0,20,,,Template placeholder; configure only with documented source-specific delivery and capacity.
-hydroelectric,hydroelectric,contract,RMB/kWh,0,30,,,Template placeholder; configure only with documented source-specific delivery and capacity.
 nuclear,nuclear,contract,RMB/kWh,0,40,,,Template placeholder; configure only with documented source-specific delivery and capacity.
-coal_fired,coal_fired,contract,RMB/kWh,0,50,,,Template placeholder; configure only with documented source-specific delivery and capacity.
 natural_gas_fired,natural_gas_fired,contract,RMB/kWh,0,60,,,Template placeholder; configure only with documented source-specific delivery and capacity.

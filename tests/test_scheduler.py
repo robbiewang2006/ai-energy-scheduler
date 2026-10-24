@@ -164,7 +164,56 @@ def write_bundle(
 
 
 class SolarMarketPriceDataTests(unittest.TestCase):
-    def test_2026_solar_prices_are_three_region_means_in_rmb_per_kwh(self):
+    def test_2025_weighted_fuel_costs_are_transcribed_as_aggregate_assumptions(self):
+        path = (
+            Path(__file__).parent.parent
+            / "data"
+            / "estimated_weighted_fuel_cost.csv"
+        )
+        with path.open(newline="", encoding="utf-8") as file:
+            rows = list(csv.DictReader(file))
+
+        expected_prices = [
+            1.48, 1.47, 1.45, 1.39, 1.33, 1.33,
+            1.34, 1.33, 1.31, 1.30, 1.30, 1.28,
+        ]
+        self.assertEqual(len(rows), 12)
+        for month_number, (row, expected_price) in enumerate(
+            zip(rows, expected_prices), start=1
+        ):
+            with self.subTest(month=row["month"]):
+                self.assertEqual(row["month"], f"2025-{month_number:02d}")
+                self.assertEqual(float(row["price"]), expected_price)
+                self.assertEqual(row["unit"], "RMB/kWh")
+                self.assertEqual(row["status"], "assumption")
+                self.assertIn("weighting method not provided", row["method"])
+                self.assertIn("source-specific", row["notes"])
+
+    def test_2025_wind_prices_are_converted_to_rmb_per_kwh(self):
+        path = Path(__file__).parent.parent / "data" / "monthly_prices.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            wind_prices = [
+                row for row in csv.DictReader(file)
+                if row["source_id"] == "wind" and row["month"].startswith("2025-")
+            ]
+
+        expected_prices = [
+            0.270, 0.230, 0.205, 0.295, 0.295, 0.330,
+            0.265, 0.320, 0.250, 0.290, 0.275, 0.170,
+        ]
+        self.assertEqual(len(wind_prices), 12)
+        for month_number, (row, expected_price) in enumerate(
+            zip(wind_prices, expected_prices), start=1
+        ):
+            with self.subTest(month=row["month"]):
+                self.assertEqual(row["month"], f"2025-{month_number:02d}")
+                self.assertEqual(float(row["price"]), expected_price)
+                self.assertEqual(row["unit"], "RMB/kWh")
+                self.assertEqual(row["original_units"], "元/MWh")
+                self.assertEqual(row["status"], "assumption")
+                self.assertEqual(row["document_title"], "Wind price by month (2025)")
+
+    def test_solar_prices_are_three_region_means_in_rmb_per_kwh(self):
         path = Path(__file__).parent.parent / "data" / "monthly_prices.csv"
         with path.open(newline="", encoding="utf-8") as file:
             solar_prices = [
@@ -196,6 +245,9 @@ class SolarMarketPriceDataTests(unittest.TestCase):
                 self.assertAlmostEqual(float(row["price"]), expected_price)
                 self.assertEqual(row["unit"], "RMB/kWh")
                 self.assertEqual(row["original_units"], "RMB/MWh")
+                self.assertEqual(
+                    row["document_title"], "Solar Energy Market Average by Month"
+                )
                 self.assertEqual(row["status"], "derived")
                 self.assertEqual(
                     row["price_category"], "explicit_user_assumption"
@@ -208,9 +260,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         expected_sources = {
             "onsite_solar",
             "wind",
-            "hydroelectric",
             "nuclear",
-            "coal_fired",
             "natural_gas_fired",
         }
         self.assertEqual(set(sources), expected_sources)
@@ -224,7 +274,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         factors = load_emission_factors(
             root / "data" / "emission_factors.csv", sources
         )
-        self.assertEqual(len(prices), len(expected_sources) * 12)
+        self.assertEqual(len(prices), len(expected_sources) * 12 + 12)
         self.assertEqual(set(factors), expected_sources)
         self.assertTrue(
             all(
@@ -254,7 +304,8 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         self.assertTrue(all(
             row["status"] == "missing"
             for row in prices
-            if row["source_id"] != "onsite_solar"
+            if row["month"].startswith("2026-")
+            and row["source_id"] != "onsite_solar"
         ))
         self.assertTrue(all(row["status"] == "missing" for row in factors))
 
@@ -516,9 +567,9 @@ class MonthlyEnergyInputTests(unittest.TestCase):
         self.assertAlmostEqual(supply, demand + losses)
 
     def test_grid_and_source_contract_are_not_double_counted(self):
-        coal = {
-            "source_id": "coal_contract",
-            "technology": "coal_fired",
+        gas = {
+            "source_id": "gas_contract",
+            "technology": "natural_gas_fired",
             "supply_type": "contract",
             "price_unit": "RMB/kWh",
             "max_power_kw": "3",
@@ -529,33 +580,33 @@ class MonthlyEnergyInputTests(unittest.TestCase):
         grid = dict(GRID, dispatch_order="2")
         inputs = write_bundle(
             self.directory,
-            sources=[coal, grid],
+            sources=[gas, grid],
             availability={
-                "coal_contract": [3, 3],
+                "gas_contract": [3, 3],
                 "ordinary_grid": [100, 100],
             },
             prices=[
-                _price_row(coal, "2024-12", 0.4),
-                _price_row(coal, "2025-01", 0.4),
+                _price_row(gas, "2024-12", 0.4),
+                _price_row(gas, "2025-01", 0.4),
                 _price_row(grid, "2024-12", 0.5),
                 _price_row(grid, "2025-01", 0.5),
             ],
             factors=[
-                _factor_row(coal, 0.8),
+                _factor_row(gas, 0.8),
                 _factor_row(grid, 0.5),
             ],
         )
         rows = dispatch({}, Battery(), inputs)
-        self.assertEqual(rows[0]["source_coal_contract_kwh"], 3)
+        self.assertEqual(rows[0]["source_gas_contract_kwh"], 3)
         self.assertEqual(rows[0]["grid_kwh"], 9)
         self.assertEqual(
-            rows[0]["source_coal_contract_kwh"] + rows[0]["grid_kwh"], 12
+            rows[0]["source_gas_contract_kwh"] + rows[0]["grid_kwh"], 12
         )
 
     def test_grid_generation_mix_cannot_be_configured_as_grid_supply(self):
-        coal_grid = dict(GRID, source_id="coal", technology="coal_fired")
+        generation_grid = dict(GRID, source_id="wind", technology="wind")
         with self.assertRaisesRegex(ValueError, "Only ordinary_grid"):
-            write_bundle(self.directory, sources=[coal_grid])
+            write_bundle(self.directory, sources=[generation_grid])
 
     def test_grid_outage_uses_strategic_diesel_reserve(self):
         diesel = {
@@ -623,9 +674,7 @@ class MonthlyEnergyInputTests(unittest.TestCase):
     def test_all_documented_electricity_technologies_are_configurable(self):
         technologies = [
             ("onsite_solar", "solar_pv", "onsite"),
-            ("hydro_contract", "hydroelectric", "contract"),
             ("nuclear_contract", "nuclear", "contract"),
-            ("coal_contract", "coal_fired", "contract"),
             ("gas_contract", "natural_gas_fired", "contract"),
             ("wind_contract", "wind", "contract"),
             ("ordinary_grid", "ordinary_grid", "grid"),
