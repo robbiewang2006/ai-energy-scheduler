@@ -1,21 +1,21 @@
 # Data provenance and limitations
 
 These CSVs contain user-provided assumptions and explicit data gaps, not a
-complete set of verified market prices or emissions factors. Monthly prices
-cover 2025–2026. The 2025 wind prices are user-provided values converted from
-元/MWh to RMB/kWh; their provenance and method are recorded in each row, but
-they are not independently verified. The onsite-solar prices are unweighted
-averages of the user-provided Shandong, Shanxi, and Sichuan values, converted
-from RMB/MWh to RMB/kWh; they are not independently verified or
-Shanghai-specific. The 2025 natural-gas-fired prices are user-provided
-estimates with unspecified estimation method and geography, not verified
-market prices. Nuclear prices for 2026 are the user-provided 0.3932 RMB/kWh
-assumption for every month; 2025 nuclear prices remain missing. The 2025
+complete set of verified market prices or emissions factors. `monthly_prices.csv`
+contains only `source_id`, `month` (`01`–`12`), `price`, and `unit`; month values
+have no year and repeat for each year in the simulation horizon. The 2025 wind
+prices are user-provided values converted from 元/MWh to RMB/kWh and are not
+independently verified. The onsite-solar prices are unweighted averages of the
+user-provided Shandong, Shanxi, and Sichuan values, converted from RMB/MWh to
+RMB/kWh; they are not independently verified or Shanghai-specific. The 2025
+natural-gas-fired prices are user-provided estimates with unspecified
+estimation method and geography, not verified market prices. Nuclear prices
+are the user-provided 0.3932 RMB/kWh assumption for every month. Diesel prices
+remain blank because no source-specific values are available. The 2025
 aggregate estimated weighted fuel costs are recorded separately in
 `estimated_weighted_fuel_cost.csv`; their weighting method and geography are
 unspecified, so they are not source-specific dispatch prices. Other
-source-specific prices remain blank with `status=missing`; this is a missing
-value marker, not zero.
+source-specific prices remain blank; this is a missing value marker, not zero.
 
 The lifecycle emissions values in `emission_factors.csv` were provided as
 general DeepSeek data and converted from gCO2e/kWh to kgCO2e/kWh. Their
@@ -62,20 +62,17 @@ basis.
 
 ## Populating the templates
 
-Keep the documented columns and units. `monthly_prices.csv` has one record per
-configured source and `YYYY-MM` month. Use a blank `price` with `status=missing`
-to record a data gap; the simulator refuses to dispatch a source with a missing
-price. `price_category` distinguishes customer purchase prices, generator
-selling prices, fuel prices, estimated generation cost/LCOE, and explicit user
-assumptions. Electricity uses RMB/kWh; diesel uses RMB/litre and is converted
-using the configured litres/kWh rate.
+`monthly_prices.csv` has one record per configured source and month (`01`–`12`),
+with no year. Use a blank `price` to record a data gap; the simulator refuses
+to dispatch a source with a missing price. Electricity uses RMB/kWh; diesel
+uses RMB/litre and is converted using the configured litres/kWh rate.
 
-For each verified or derived price, include publisher, source URL, table/title,
-publication date, applicable period, geography, original units, and the
-conversion or aggregation method. Emission rows must document kgCO2/kWh (direct
-operational CO2), kgCO2e/kWh (lifecycle), or kgCO2/litre (direct diesel
-combustion), with reference year, geography, boundary, source, and method.
-Direct and lifecycle factors cannot be combined in one objective.
+For each verified or derived price, retain its publisher, source URL, table/title,
+publication date, applicable period, geography, original units, and conversion
+or aggregation method outside the compact price table. Emission rows document
+kgCO2/kWh (direct operational CO2), kgCO2e/kWh (lifecycle), or kgCO2/litre
+(direct diesel combustion), with reference year, geography, boundary, source,
+and method. Direct and lifecycle factors cannot be combined in one objective.
 
 `source_config.csv` records supply type (`onsite`, `contract`, or optional
 `grid`), power capacity, dispatch order, and optional diesel fuel constraints. Its
