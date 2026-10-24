@@ -2,7 +2,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import argparse
 import csv
-import math
+
+from energy_data import load_energy_inputs
 
 
 @dataclass(frozen=True)
@@ -21,40 +22,13 @@ class Battery:
     discharge_efficiency: float = 0.95
 
 
-@dataclass(frozen=True)
-class HourlyInputs:
-    price: list
-    solar_kw: list
-    grid_co2_kg_per_kwh: list
-    protected_it_kw: list
-
-
-# Synthetic demonstration inputs: not measured Chinese operating data.
-HOURS = 24
-PRICE = [
-    0.30, 0.30, 0.30, 0.30, 0.30, 0.30, 0.30, 0.30,
-    0.58, 0.58, 0.83, 0.83, 0.58, 0.58, 0.58, 0.83,
-    0.83, 0.83, 0.83, 0.83, 0.58, 0.83, 0.58, 0.58,
-]
-SOLAR_KW = [
-    0, 0, 0, 0, 0, 0, 0, 3,
-    10, 20, 30, 38, 42, 38, 30, 20,
-    10, 3, 0, 0, 0, 0, 0, 0,
-]
-GRID_CO2_KG_PER_KWH = [
-    0.65, 0.65, 0.65, 0.65, 0.65, 0.65, 0.62, 0.60,
-    0.55, 0.50, 0.45, 0.40, 0.38, 0.40, 0.45, 0.50,
-    0.55, 0.60, 0.65, 0.68, 0.68, 0.68, 0.65, 0.65,
-]
-PROTECTED_IT_KW = [10.0] * HOURS
-
-SYNTHETIC_INPUTS = HourlyInputs(
-    PRICE, SOLAR_KW, GRID_CO2_KG_PER_KWH, PROTECTED_IT_KW
-)
-
 IT_CAPACITY_KW = 35.0
 PUE = 1.2
 CARBON_PRICE_RMB_PER_KG = 0.20
+
+SYNTHETIC_INPUTS = load_energy_inputs(
+    Path(__file__).resolve().parent / "examples" / "synthetic"
+)
 
 JOBS = [
     Job("training_A", release=0, deadline=8, compute_kwh=60),
@@ -63,102 +37,7 @@ JOBS = [
 ]
 
 
-def load_hourly_inputs(path):
-    columns = [
-        "hour",
-        "price_rmb_per_kwh",
-        "solar_kw",
-        "grid_co2_kg_per_kwh",
-        "protected_it_kw",
-    ]
-    with path.open(newline="", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
-        headers = reader.fieldnames
-        if headers is None:
-            raise ValueError("CSV file is missing a header row.")
-        if len(headers) != len(set(headers)):
-            raise ValueError("CSV file contains duplicate column names.")
-        missing_columns = [column for column in columns if column not in headers]
-        if missing_columns:
-            raise ValueError(
-                "CSV file is missing required columns: "
-                + ", ".join(missing_columns)
-            )
-
-        rows = {}
-        for line_number, row in enumerate(reader, start=2):
-            if None in row:
-                raise ValueError(f"CSV row {line_number} has too many values.")
-            parsed = {}
-            for column in columns:
-                value = row[column]
-                if value is None or not value.strip():
-                    raise ValueError(
-                        f"CSV row {line_number} has a missing value for {column}."
-                    )
-                try:
-                    number = float(value)
-                except ValueError as error:
-                    raise ValueError(
-                        f"CSV row {line_number} has a non-numeric value for "
-                        f"{column}: {value!r}."
-                    ) from error
-                if not math.isfinite(number):
-                    raise ValueError(
-                        f"CSV row {line_number} has a non-finite value for "
-                        f"{column}."
-                    )
-                parsed[column] = number
-
-            hour_value = parsed["hour"]
-            if not hour_value.is_integer() or not 0 <= hour_value < HOURS:
-                raise ValueError(
-                    f"CSV row {line_number} has an invalid hour: "
-                    f"{row['hour']!r}."
-                )
-            hour = int(hour_value)
-            if hour in rows:
-                raise ValueError(f"CSV contains duplicate hour {hour}.")
-            for column in (
-                "solar_kw",
-                "grid_co2_kg_per_kwh",
-                "protected_it_kw",
-            ):
-                if parsed[column] < 0:
-                    raise ValueError(
-                        f"CSV row {line_number} has a negative {column}."
-                    )
-            rows[hour] = parsed
-
-    missing_hours = sorted(set(range(HOURS)) - rows.keys())
-    if missing_hours:
-        raise ValueError(
-            "CSV is missing hours: " + ", ".join(map(str, missing_hours))
-        )
-
-    return HourlyInputs(
-        price=[rows[hour]["price_rmb_per_kwh"] for hour in range(HOURS)],
-        solar_kw=[rows[hour]["solar_kw"] for hour in range(HOURS)],
-        grid_co2_kg_per_kwh=[
-            rows[hour]["grid_co2_kg_per_kwh"] for hour in range(HOURS)
-        ],
-        protected_it_kw=[rows[hour]["protected_it_kw"] for hour in range(HOURS)],
-    )
-
-
 def validate_inputs(jobs, inputs=SYNTHETIC_INPUTS):
-    arrays = [
-        inputs.price,
-        inputs.solar_kw,
-        inputs.grid_co2_kg_per_kwh,
-        inputs.protected_it_kw,
-    ]
-    if any(len(values) != HOURS for values in arrays):
-        raise ValueError("Every hourly input must have HOURS entries.")
-
-    if any(x < 0 for values in arrays[1:] for x in values):
-        raise ValueError("Solar, carbon intensity, and demand must be nonnegative.")
-
     if PUE < 1:
         raise ValueError("PUE must be at least 1.")
 
@@ -169,32 +48,82 @@ def validate_inputs(jobs, inputs=SYNTHETIC_INPUTS):
         raise ValueError("Job names must be unique.")
 
     for job in jobs:
-        if not 0 <= job.release < job.deadline <= HOURS:
+        if not 0 <= job.release < job.deadline <= len(inputs.timestamps):
             raise ValueError(f"Invalid time window: {job.name}")
         if job.compute_kwh < 0:
             raise ValueError(f"Negative job energy: {job.name}")
 
 
+def _source_accounting(source_id, amount_kwh, timestamp, inputs):
+    if amount_kwh <= 1e-12:
+        return 0.0, 0.0
+    source = inputs.sources[source_id]
+    month = timestamp.strftime("%Y-%m")
+    price_record = inputs.monthly_prices[(source_id, month)]
+    if price_record.price is None:
+        raise ValueError(
+            f"Missing {source_id} price for {month}; refusing to use zero."
+        )
+    factor_record = inputs.emission_factors[source_id]
+    if factor_record.factor is None:
+        raise ValueError(
+            f"Missing emissions factor for used source {source_id}; "
+            "refusing to use zero."
+        )
+    if source.price_unit == "RMB/litre":
+        fuel_litres = amount_kwh * source.fuel_consumption_l_per_kwh
+        return fuel_litres * price_record.price, fuel_litres * factor_record.factor
+    return (
+        amount_kwh * price_record.price,
+        amount_kwh * factor_record.factor,
+    )
+
+
 def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS):
-    """One-hour intervals; battery starts empty and stores solar only."""
+    """Dispatch hourly supply; battery starts empty and stores onsite solar only."""
+    validate_inputs([], inputs)
     soc = 0.0
     rows = []
+    fuel_used_l = {source_id: 0.0 for source_id in inputs.sources}
+    accounting_classes = set()
 
-    for hour in range(HOURS):
+    for hour, timestamp in enumerate(inputs.timestamps):
         flexible_it = sum(values[hour] for values in schedule.values())
         it_load = inputs.protected_it_kw[hour] + flexible_it
         facility_load = PUE * it_load
 
-        direct_solar = min(inputs.solar_kw[hour], facility_load)
-        solar_surplus = inputs.solar_kw[hour] - direct_solar
-        remaining_load = facility_load - direct_solar
-
+        solar_sources = sorted(
+            (
+                source for source in inputs.sources.values()
+                if source.technology == "solar_pv"
+                and source.supply_type == "onsite"
+            ),
+            key=lambda source: (source.dispatch_order, source.source_id),
+        )
+        used_by_source = {source_id: 0.0 for source_id in inputs.sources}
+        solar_surplus_by_source = {}
+        remaining_load = facility_load
+        for source in solar_sources:
+            available = inputs.availability_kwh[source.source_id][hour]
+            direct = min(available, remaining_load)
+            used_by_source[source.source_id] += direct
+            solar_surplus_by_source[source.source_id] = available - direct
+            remaining_load -= direct
+        solar_surplus = sum(solar_surplus_by_source.values())
         charge = min(
             solar_surplus,
             battery.power_kw,
             max(0.0, battery.capacity_kwh - soc)
             / battery.charge_efficiency,
         )
+        charge_left = charge
+        for source in solar_sources:
+            source_charge = min(
+                solar_surplus_by_source.get(source.source_id, 0.0),
+                charge_left,
+            )
+            used_by_source[source.source_id] += source_charge
+            charge_left -= source_charge
         soc += charge * battery.charge_efficiency
 
         discharge = min(
@@ -205,26 +134,109 @@ def dispatch(schedule, battery, inputs=SYNTHETIC_INPUTS):
         soc -= discharge / battery.discharge_efficiency
         soc = max(0.0, soc)
 
-        grid = remaining_load - discharge
+        remaining_load -= discharge
+        other_sources = sorted(
+            (
+                source for source in inputs.sources.values()
+                if source not in solar_sources
+            ),
+            key=lambda source: (source.dispatch_order, source.source_id),
+        )
+        for source in other_sources:
+            available = inputs.availability_kwh[source.source_id][hour]
+            limit = min(available, source.max_power_kw)
+            if source.fuel_consumption_l_per_kwh is not None:
+                limit = min(
+                    limit,
+                    (
+                        source.fuel_inventory_l - fuel_used_l[source.source_id]
+                    )
+                    / source.fuel_consumption_l_per_kwh,
+                )
+            amount = min(max(0.0, limit), remaining_load)
+            used_by_source[source.source_id] += amount
+            remaining_load -= amount
+            if source.fuel_consumption_l_per_kwh is not None:
+                fuel_used_l[source.source_id] += (
+                    amount * source.fuel_consumption_l_per_kwh
+                )
 
-        rows.append({
+        if remaining_load > 1e-6:
+            raise ValueError(
+                f"Available supplies cannot meet the facility load at {timestamp}."
+            )
+
+        source_costs = {}
+        source_emissions = {}
+        for source_id, amount in used_by_source.items():
+            cost, emissions = _source_accounting(
+                source_id, amount, timestamp, inputs
+            )
+            source_costs[source_id] = cost
+            source_emissions[source_id] = emissions
+            if amount > 1e-12:
+                factor = inputs.emission_factors[source_id]
+                accounting_classes.add((
+                    "CO2e" if factor.unit.startswith("kgCO2e") else "CO2",
+                    "lifecycle"
+                    if "lifecycle" in factor.boundary.lower()
+                    else "direct",
+                ))
+        grid = sum(
+            used_by_source[source_id]
+            for source_id, source in inputs.sources.items()
+            if source.supply_type == "grid"
+        )
+        grid_emissions = sum(
+            source_emissions[source_id]
+            for source_id, source in inputs.sources.items()
+            if source.supply_type == "grid"
+        )
+
+        row = {
             "hour": hour,
+            "timestamp": timestamp.isoformat(),
             "protected_it_kwh": inputs.protected_it_kw[hour],
             "flexible_it_kwh": flexible_it,
             "facility_kwh": facility_load,
-            "solar_available_kwh": inputs.solar_kw[hour],
-            "solar_direct_kwh": direct_solar,
+            "solar_available_kwh": sum(
+                inputs.availability_kwh[source.source_id][hour]
+                for source in solar_sources
+            ),
+            "solar_direct_kwh": sum(
+                used_by_source[source.source_id] for source in solar_sources
+            ) - charge,
             "battery_charge_kwh": charge,
             "battery_discharge_kwh": discharge,
             "battery_soc_kwh": soc,
             "solar_curtailed_kwh": solar_surplus - charge,
             "grid_kwh": grid,
-            "electricity_cost_rmb": grid * inputs.price[hour],
-            "grid_emissions_kg": (
-                grid * inputs.grid_co2_kg_per_kwh[hour]
-            ),
-        })
+            "grid_emissions_kg": grid_emissions,
+            "electricity_cost_rmb": sum(source_costs.values()),
+            "emissions_kg": sum(source_emissions.values()),
+        }
+        for source_id, amount in used_by_source.items():
+            row[f"source_{source_id}_kwh"] = amount
+            row[f"source_{source_id}_cost_rmb"] = source_costs[source_id]
+            row[f"source_{source_id}_emissions_kg"] = source_emissions[source_id]
+            monthly_price = inputs.monthly_prices[
+                (source_id, timestamp.strftime("%Y-%m"))
+            ]
+            factor = inputs.emission_factors[source_id]
+            row[f"source_{source_id}_price_category"] = (
+                monthly_price.price_category
+            )
+            row[f"source_{source_id}_price_unit"] = monthly_price.unit
+            row[f"source_{source_id}_price_status"] = monthly_price.status
+            row[f"source_{source_id}_emission_unit"] = factor.unit
+            row[f"source_{source_id}_emission_boundary"] = factor.boundary
+        rows.append(row)
 
+    if len(accounting_classes) > 1:
+        raise ValueError(
+            "Cannot combine lifecycle and direct emissions factors in "
+            "one objective; configure a consistent accounting boundary."
+        )
     return rows
 
 
@@ -232,7 +244,7 @@ def objective(schedule, battery, carbon_price, inputs=SYNTHETIC_INPUTS):
     rows = dispatch(schedule, battery, inputs)
     return sum(
         row["electricity_cost_rmb"]
-        + carbon_price * row["grid_emissions_kg"]
+        + carbon_price * row["emissions_kg"]
         for row in rows
     )
 
@@ -245,7 +257,7 @@ def build_schedule(jobs, battery, smart=False, quantum_kwh=1.0,
     if quantum_kwh <= 0:
         raise ValueError("Scheduling quantum must be positive.")
 
-    schedule = {job.name: [0.0] * HOURS for job in jobs}
+    schedule = {job.name: [0.0] * len(inputs.timestamps) for job in jobs}
     spare = [IT_CAPACITY_KW - load for load in inputs.protected_it_kw]
 
     # Earliest-deadline-first admission; greedy placement within each job.
@@ -296,7 +308,7 @@ def verify_schedule(jobs, schedule, inputs=SYNTHETIC_INPUTS):
             if not job.release <= hour < job.deadline
         )
 
-    for hour in range(HOURS):
+    for hour in range(len(inputs.timestamps)):
         load = inputs.protected_it_kw[hour] + sum(
             values[hour] for values in schedule.values()
         )
@@ -307,7 +319,7 @@ def summarize(name, rows):
     return {
         "strategy": name,
         "cost_rmb": sum(row["electricity_cost_rmb"] for row in rows),
-        "grid_emissions_kg": sum(row["grid_emissions_kg"] for row in rows),
+        "emissions_kg": sum(row["emissions_kg"] for row in rows),
         "grid_energy_kwh": sum(row["grid_kwh"] for row in rows),
         "peak_grid_kw": max(row["grid_kwh"] for row in rows),
         "solar_curtailed_kwh": sum(
@@ -327,16 +339,14 @@ def write_csv(path, rows):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Schedule hourly compute jobs.")
     parser.add_argument(
-        "--input-csv",
+        "--data-dir",
         type=Path,
-        help="hourly input CSV (defaults to the built-in synthetic demo)",
+        default=Path(__file__).resolve().parent / "examples" / "synthetic",
+        help="directory containing source_config.csv, hourly_availability.csv, "
+        "monthly_prices.csv, and emission_factors.csv",
     )
     args = parser.parse_args(argv)
-    inputs = (
-        load_hourly_inputs(args.input_csv)
-        if args.input_csv
-        else SYNTHETIC_INPUTS
-    )
+    inputs = load_energy_inputs(args.data_dir)
 
     battery = Battery()
     output = Path("results")
@@ -370,7 +380,7 @@ def main(argv=None):
         print(
             f"{result['strategy']:20s} "
             f"cost={result['cost_rmb']:.2f} RMB | "
-            f"grid emissions={result['grid_emissions_kg']:.2f} kg | "
+            f"emissions={result['emissions_kg']:.2f} kg | "
             f"peak grid={result['peak_grid_kw']:.2f} kW"
         )
 

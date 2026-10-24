@@ -1,0 +1,3 @@
+source_id,month,price,unit,price_category,status,publisher,source_url,document_title,publication_date,applicable_period,geography,original_units,method,notes
+onsite_solar,2025-01,0.00,RMB/kWh,explicit_user_assumption,assumption,Synthetic demo,not applicable,Synthetic scenario assumptions,2026-10-24,2025-01,synthetic,scenario RMB/kWh,illustrative fixed monthly value,Not an observed generation cost or contract price.
+ordinary_grid,2025-01,0.58,RMB/kWh,explicit_user_assumption,assumption,Synthetic demo,not applicable,Synthetic scenario assumptions,2026-10-24,2025-01,synthetic,scenario RMB/kWh,illustrative fixed monthly value,Not an observed Shanghai customer tariff or source-specific purchase price.

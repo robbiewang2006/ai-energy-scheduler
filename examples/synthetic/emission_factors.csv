@@ -1,0 +1,3 @@
+source_id,factor,unit,boundary,reference_year,geography,status,publisher,source_url,document_title,publication_date,applicable_period,method,notes
+onsite_solar,0.0,kgCO2/kWh,direct_operational,synthetic,synthetic,assumption,Synthetic demo,not applicable,Synthetic scenario assumptions,2026-10-24,synthetic,direct onsite operational emissions set to zero for demo,Not a lifecycle factor.
+ordinary_grid,0.55,kgCO2/kWh,direct_operational,synthetic,synthetic,assumption,Synthetic demo,not applicable,Synthetic scenario assumptions,2026-10-24,synthetic,illustrative constant direct emissions factor,Not an official or Shanghai-specific factor.

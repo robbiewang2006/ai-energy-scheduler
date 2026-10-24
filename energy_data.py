@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import csv
 import math
 from pathlib import Path
@@ -49,7 +49,12 @@ SOURCE_COLUMNS = {
     "fuel_consumption_l_per_kwh",
     "fuel_inventory_l",
 }
-AVAILABILITY_COLUMNS = {"timestamp", "source_id", "available_kwh"}
+AVAILABILITY_COLUMNS = {
+    "timestamp",
+    "source_id",
+    "available_kwh",
+    "protected_it_kw",
+}
 PRICE_CATEGORIES = {
     "customer_purchase_price",
     "generator_selling_price",
@@ -233,8 +238,10 @@ def load_sources(path):
         )
     if not sources:
         raise ValueError(f"{path} does not define any energy sources.")
-    if not any(source.supply_type == "grid" for source in sources.values()):
-        raise ValueError("Source configuration must include ordinary grid supply.")
+    if sum(source.supply_type == "grid" for source in sources.values()) != 1:
+        raise ValueError(
+            "Source configuration must include exactly one ordinary grid source."
+        )
     return sources
 
 
@@ -281,20 +288,28 @@ def load_hourly_availability(path, sources):
         values[key] = available
         source_timestamps[source_id].add(timestamp)
         timestamps.add(timestamp)
-        if "protected_it_kw" in row and row["protected_it_kw"].strip():
-            demand = _number(
-                row["protected_it_kw"],
-                "protected_it_kw",
-                path,
-                line_number,
+        demand = _number(
+            _required(row, "protected_it_kw", path, line_number),
+            "protected_it_kw",
+            path,
+            line_number,
+        )
+        if (
+            timestamp in demand_by_timestamp
+            and demand_by_timestamp[timestamp] != demand
+        ):
+            raise ValueError(
+                f"{path} has inconsistent protected demand at {timestamp_text}."
             )
-            if timestamp in demand_by_timestamp and demand_by_timestamp[timestamp] != demand:
-                raise ValueError(
-                    f"{path} has inconsistent protected demand at {timestamp_text}."
-                )
-            demand_by_timestamp[timestamp] = demand
+        demand_by_timestamp[timestamp] = demand
     if not timestamps:
         raise ValueError(f"{path} does not contain any hourly availability.")
+    ordered_timestamps = tuple(sorted(timestamps))
+    if any(
+        later - earlier != timedelta(hours=1)
+        for earlier, later in zip(ordered_timestamps, ordered_timestamps[1:])
+    ):
+        raise ValueError(f"{path} timestamps must advance one hour at a time.")
     for source_id, source_hours in source_timestamps.items():
         if source_hours != timestamps:
             raise ValueError(
@@ -303,7 +318,6 @@ def load_hourly_availability(path, sources):
             )
     if len(demand_by_timestamp) != len(timestamps):
         raise ValueError(f"{path} must provide protected_it_kw for every hour.")
-    ordered_timestamps = tuple(sorted(timestamps))
     availability = {
         source_id: tuple(values[(timestamp, source_id)] for timestamp in ordered_timestamps)
         for source_id in sources
@@ -378,6 +392,25 @@ def load_monthly_prices(path, sources, timestamps):
             raise ValueError(
                 f"{path} row {line_number}: RMB/litre must use fuel_price category."
             )
+        supply_type = sources[source_id].supply_type
+        if (
+            category == "estimated_generation_cost_lcoe"
+            and supply_type != "onsite"
+        ):
+            raise ValueError(
+                f"{path} row {line_number}: generation cost/LCOE applies only "
+                "to onsite generation."
+            )
+        if category == "generator_selling_price" and supply_type != "contract":
+            raise ValueError(
+                f"{path} row {line_number}: generator selling prices apply "
+                "only to contracted electricity."
+            )
+        if category == "customer_purchase_price" and supply_type == "onsite":
+            raise ValueError(
+                f"{path} row {line_number}: onsite generation cannot use a "
+                "customer purchase price."
+            )
         if status in {"observed", "derived"}:
             for column in (
                 "publisher",
@@ -451,6 +484,12 @@ def load_emission_factors(path, sources):
             factor = _number(raw_factor, "factor", path, line_number)
         boundary = _required(row, "boundary", path, line_number)
         reference_year = _required(row, "reference_year", path, line_number)
+        is_lifecycle = "lifecycle" in boundary.lower()
+        if (unit == "kgCO2e/kWh") != is_lifecycle:
+            raise ValueError(
+                f"{path} row {line_number} must keep lifecycle CO2e and direct "
+                "CO2 factors in separate accounting boundaries."
+            )
         if status in {"observed", "derived"}:
             for column in (
                 "geography",
