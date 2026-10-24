@@ -188,16 +188,22 @@ Outputs are written to `results/`. Run automated tests with:
 python -m unittest discover -s tests
 ```
 
-## Annual 1 MWh cost-emissions frontiers
+## Annual 10 TWh cost-emissions frontiers
 
-Plot each calendar year's feasible source mixes for 1 MWh, using monthly
-prices and hourly availability from that year only:
+By default, plot each calendar year's feasible source mixes for 10 TWh
+(10,000,000 MWh), using monthly prices and hourly availability from that year
+only:
 
 ```bash
 python plot_frontier.py
-# Choose another dataset or target:
-python plot_frontier.py --data-dir /tmp/my-energy-inputs --target-mwh 2
+# Choose another dataset or a smaller target:
+python plot_frontier.py --data-dir /tmp/my-energy-inputs --target-mwh 1
 ```
+
+Each year's configured sources must have enough available energy to supply the
+target. The bundled one-day synthetic profile cannot supply 10 TWh; use an
+input bundle with at least 10 TWh available in every plotted year, or explicitly
+select a smaller target such as 1 MWh for the synthetic data.
 
 The command writes `results/emissions_price_frontier.svg` and
 `results/emissions_price_frontier.csv`. Each year is optimized independently;
@@ -223,4 +229,4 @@ covering each year to be plotted.
 
 The checked-in [synthetic example plot](examples/synthetic/results/emissions_price_frontier.svg)
 and [frontier data](examples/synthetic/results/emissions_price_frontier.csv)
-were generated from that same hypothetical one-day input bundle.
+were generated for 1 MWh from that same hypothetical one-day input bundle.

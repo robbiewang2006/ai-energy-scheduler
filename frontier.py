@@ -135,7 +135,13 @@ def _candidate(options, amounts, target_kwh):
     }
 
 
-def pareto_frontier(inputs, target_mwh=1.0):
+def format_energy_target(target_mwh):
+    if target_mwh >= 1_000_000:
+        return f"{target_mwh / 1_000_000:g} TWh"
+    return f"{target_mwh:g} MWh"
+
+
+def pareto_frontier(inputs, target_mwh=10_000_000.0):
     if target_mwh <= 0:
         raise ValueError("Target energy must be positive.")
     options, emission_unit = _procurement_options(inputs)
@@ -204,7 +210,7 @@ def pareto_frontier(inputs, target_mwh=1.0):
     return frontier, emission_unit
 
 
-def calendar_year_frontiers(inputs, target_mwh=1.0):
+def calendar_year_frontiers(inputs, target_mwh=10_000_000.0):
     """Find independent ordinary-operation procurement frontiers per year."""
     years = sorted({timestamp.year for timestamp in inputs.timestamps})
     points_by_year = []
@@ -335,7 +341,7 @@ def write_frontier_svg(
         '.frontier{fill:none;stroke:#1976d2;stroke-width:3}'
         '.point{stroke:white;stroke-width:2}</style>',
         f'<text x="{width / 2}" y="32" text-anchor="middle" font-size="20">'
-        f'Cost-emissions frontier for {target_mwh:g} MWh</text>',
+        f'Cost-emissions frontier for {format_energy_target(target_mwh)}</text>',
     ]
     for step in range(6):
         fraction = step / 5
@@ -363,7 +369,7 @@ def write_frontier_svg(
         f'({emissions_name}/MWh)</text>',
     ])
     y_axis_label = (
-        f"Procurement cost (RMB for {target_mwh:g} MWh)"
+        f"Procurement cost (RMB for {format_energy_target(target_mwh)})"
         if series_key
         else "Average price (RMB/kWh)"
     )
