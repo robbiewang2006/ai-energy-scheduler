@@ -1,0 +1,2 @@
+scenario,source_id,availability_multiplier,price_multiplier,notes
+grid_outage,ordinary_grid,0,1,Illustrative complete grid outage; reserve generators dispatch after other supplies.

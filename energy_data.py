@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, date, timedelta
 import csv
 import math
@@ -55,6 +55,13 @@ AVAILABILITY_COLUMNS = {
     "available_kwh",
     "protected_it_kw",
 }
+SCENARIO_IMPACT_COLUMNS = {
+    "scenario",
+    "source_id",
+    "availability_multiplier",
+    "price_multiplier",
+    "notes",
+}
 PRICE_CATEGORIES = {
     "customer_purchase_price",
     "generator_selling_price",
@@ -98,6 +105,12 @@ class EmissionFactor:
 
 
 @dataclass(frozen=True)
+class ScenarioImpact:
+    availability_multiplier: float
+    price_multiplier: float
+
+
+@dataclass(frozen=True)
 class EnergyInputs:
     timestamps: tuple
     protected_it_kw: tuple
@@ -105,6 +118,31 @@ class EnergyInputs:
     sources: dict
     monthly_prices: dict
     emission_factors: dict
+    scenario_impacts: dict = field(default_factory=dict)
+
+
+def fuel_litres_to_electricity_kwh(fuel_litres, fuel_consumption_l_per_kwh):
+    """Convert generator fuel volume to electricity using its configured rate."""
+    if (
+        not math.isfinite(fuel_litres)
+        or fuel_litres < 0
+        or not math.isfinite(fuel_consumption_l_per_kwh)
+        or fuel_consumption_l_per_kwh <= 0
+    ):
+        raise ValueError("Fuel litres must be non-negative and consumption positive.")
+    return fuel_litres / fuel_consumption_l_per_kwh
+
+
+def fuel_price_rmb_per_kwh(price_rmb_per_litre, fuel_consumption_l_per_kwh):
+    """Express fuel cost per litre as the generator's equivalent cost per kWh."""
+    if (
+        not math.isfinite(price_rmb_per_litre)
+        or price_rmb_per_litre < 0
+        or not math.isfinite(fuel_consumption_l_per_kwh)
+        or fuel_consumption_l_per_kwh <= 0
+    ):
+        raise ValueError("Fuel price must be non-negative and consumption positive.")
+    return price_rmb_per_litre * fuel_consumption_l_per_kwh
 
 
 def _read_csv(path, required_columns):
@@ -512,6 +550,49 @@ def load_emission_factors(path, sources):
     return factors
 
 
+def load_scenario_impacts(path, sources):
+    if not Path(path).exists():
+        return {}
+    rows = _read_csv(path, SCENARIO_IMPACT_COLUMNS)
+    impacts = {}
+    for line_number, row in rows:
+        scenario = _required(row, "scenario", path, line_number)
+        if scenario == "ordinary":
+            raise ValueError(
+                f"{path} row {line_number}: ordinary operation is the implicit baseline."
+            )
+        source_id = _required(row, "source_id", path, line_number)
+        if source_id not in sources:
+            raise ValueError(
+                f"{path} row {line_number} references unknown source {source_id!r}."
+            )
+        key = (scenario, source_id)
+        if key in impacts:
+            raise ValueError(
+                f"{path} contains duplicate impact for {scenario}/{source_id}."
+            )
+        availability_multiplier = _number(
+            _required(row, "availability_multiplier", path, line_number),
+            "availability_multiplier",
+            path,
+            line_number,
+        )
+        if availability_multiplier > 1:
+            raise ValueError(
+                f"{path} row {line_number} availability_multiplier cannot exceed 1."
+            )
+        price_multiplier = _number(
+            _required(row, "price_multiplier", path, line_number),
+            "price_multiplier",
+            path,
+            line_number,
+        )
+        impacts[key] = ScenarioImpact(
+            availability_multiplier, price_multiplier
+        )
+    return impacts
+
+
 def load_energy_inputs(directory):
     directory = Path(directory)
     sources = load_sources(directory / "source_config.csv")
@@ -522,6 +603,9 @@ def load_energy_inputs(directory):
         directory / "monthly_prices.csv", sources, timestamps
     )
     factors = load_emission_factors(directory / "emission_factors.csv", sources)
+    scenario_impacts = load_scenario_impacts(
+        directory / "scenario_impacts.csv", sources
+    )
     return EnergyInputs(
-        timestamps, demand, availability, sources, prices, factors
+        timestamps, demand, availability, sources, prices, factors, scenario_impacts
     )

@@ -71,6 +71,11 @@ limited by both its configured capacity and hourly availability. Use only one
 ordinary-grid source: do not add the grid's generation mix again as separate
 grid supply. The energy-source list is configurable; nuclear in a contract is
 not evidence of an onsite reactor or any Huawei ownership.
+- `scenario_impacts.csv` records optional, explicitly assumed source-specific
+availability and price multipliers for outages or supply disruptions. Use
+verified exposure data to configure shocks to concentrated gas imports or
+routes affected by a Hormuz-like event; the model does not infer geopolitical
+dependencies.
 
 The runnable, explicitly hypothetical inputs are in
 [`../examples/synthetic`](../examples/synthetic/). They are not official data
