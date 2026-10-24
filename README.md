@@ -1,5 +1,4 @@
 # ai-energy-scheduler
-# u u me me vay vay
 
 ## Project entry points
 
