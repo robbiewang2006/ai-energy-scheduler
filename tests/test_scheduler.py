@@ -157,6 +157,46 @@ def write_bundle(
     return load_energy_inputs(directory)
 
 
+class SolarMarketPriceDataTests(unittest.TestCase):
+    def test_2026_solar_prices_are_three_region_means_in_rmb_per_kwh(self):
+        path = Path(__file__).parent.parent / "data" / "monthly_prices.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            solar_prices = [
+                row for row in csv.DictReader(file)
+                if row["source_id"] == "onsite_solar"
+            ]
+
+        expected_prices = [
+            0.168333333,
+            0.166666667,
+            0.164333333,
+            0.156,
+            0.134666667,
+            0.101166667,
+            0.119333333,
+            0.123666667,
+            0.128236667,
+            0.135166667,
+            0.152666667,
+            0.165666667,
+        ]
+        self.assertEqual(len(solar_prices), 12)
+        for month_number, (row, expected_price) in enumerate(
+            zip(solar_prices, expected_prices), start=1
+        ):
+            with self.subTest(month=row["month"]):
+                self.assertEqual(row["month"], f"2026-{month_number:02d}")
+                self.assertEqual(row["applicable_period"], row["month"])
+                self.assertAlmostEqual(float(row["price"]), expected_price)
+                self.assertEqual(row["unit"], "RMB/kWh")
+                self.assertEqual(row["original_units"], "RMB/MWh")
+                self.assertEqual(row["status"], "derived")
+                self.assertEqual(
+                    row["price_category"], "explicit_user_assumption"
+                )
+                self.assertIn("not independently verified", row["notes"])
+
+
 class MonthlyEnergyInputTests(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.TemporaryDirectory()

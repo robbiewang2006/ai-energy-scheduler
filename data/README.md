@@ -1,11 +1,15 @@
 # Data provenance and limitations
 
-These CSVs record input templates and explicit data gaps, not observed numeric
-prices or emissions factors. The official-site requests made for this change
-failed at DNS lookup, so no source-derived numeric prices or factors could be
-verified and none are filled in here. `monthly_prices.csv` has a blank
-`status=missing` row for each configured source/month for 2026; this is a
-missing-value marker, not zero. `source_config.csv` uses zero-capacity
+These CSVs contain user-provided derived assumptions and explicit data gaps,
+not a complete set of verified market prices or emissions factors. The 2026
+onsite-solar prices in `monthly_prices.csv` are unweighted averages of the
+user-provided Shandong, Shanxi, and Sichuan values, converted from RMB/MWh to
+RMB/kWh; their provenance and method are recorded in each row. They are not
+independently verified or Shanghai-specific. The ordinary-grid prices and
+emissions factors remain blank with `status=missing`; this is a missing-value
+marker, not zero. The official-site requests made for this change failed at DNS
+lookup, so no official source-derived numeric prices or factors could be
+verified. `source_config.csv` uses zero-capacity
 placeholders that must be replaced. This includes source-specific monthly
 contracts, Shanghai tariffs and diesel prices, and the underlying official
 emissions-factor table.
