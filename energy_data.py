@@ -11,17 +11,6 @@ PRICE_COLUMNS = {
     "month",
     "price",
     "unit",
-    "price_category",
-    "status",
-    "publisher",
-    "source_url",
-    "document_title",
-    "publication_date",
-    "applicable_period",
-    "geography",
-    "original_units",
-    "method",
-    "notes",
 }
 EMISSION_COLUMNS = {
     "source_id",
@@ -366,6 +355,7 @@ def load_monthly_prices(path, sources, timestamps):
     rows = _read_csv(path, PRICE_COLUMNS)
     prices = {}
     months = {timestamp.strftime("%Y-%m") for timestamp in timestamps}
+    seen_months = set()
     for line_number, row in rows:
         source_id = _required(row, "source_id", path, line_number)
         if source_id not in sources:
@@ -373,34 +363,55 @@ def load_monthly_prices(path, sources, timestamps):
                 f"{path} row {line_number} references unknown source {source_id!r}."
             )
         month = _required(row, "month", path, line_number)
-        if not re.fullmatch(r"\d{4}-\d{2}", month):
-            raise ValueError(
-                f"{path} row {line_number} month must use YYYY-MM format."
+        if re.fullmatch(r"\d{2}", month):
+            month_number = int(month)
+            try:
+                date(2000, month_number, 1)
+            except ValueError as error:
+                raise ValueError(f"{path} row {line_number} has invalid month.") from error
+            matching_months = sorted(
+                timestamp.strftime("%Y-%m")
+                for timestamp in timestamps
+                if timestamp.strftime("%m") == month
             )
-        try:
-            date.fromisoformat(month + "-01")
-        except ValueError as error:
-            raise ValueError(f"{path} row {line_number} has invalid month.") from error
-        key = (source_id, month)
-        if key in prices:
+            duplicate_key = (source_id, month)
+        elif re.fullmatch(r"\d{4}-\d{2}", month):
+            try:
+                date.fromisoformat(month + "-01")
+            except ValueError as error:
+                raise ValueError(
+                    f"{path} row {line_number} has invalid month."
+                ) from error
+            matching_months = [month]
+            duplicate_key = (source_id, month)
+        else:
+            raise ValueError(
+                f"{path} row {line_number} month must use MM or YYYY-MM format."
+            )
+        if duplicate_key in seen_months:
             raise ValueError(
                 f"{path} contains duplicate source-month record {source_id}/{month}."
             )
+        seen_months.add(duplicate_key)
         unit = _required(row, "unit", path, line_number)
         if unit != sources[source_id].price_unit:
             raise ValueError(
                 f"{path} row {line_number} unit {unit!r} does not match "
                 f"{source_id} configuration ({sources[source_id].price_unit})."
             )
-        category = _required(row, "price_category", path, line_number)
+        category = row.get("price_category", "").strip() or (
+            "fuel_price" if unit == "RMB/litre" else "explicit_user_assumption"
+        )
         if category not in PRICE_CATEGORIES:
             raise ValueError(
                 f"{path} row {line_number} has invalid price_category {category!r}."
             )
-        status = _required(row, "status", path, line_number)
+        raw_price = row.get("price", "").strip()
+        status = row.get("status", "").strip() or (
+            "missing" if not raw_price else "assumption"
+        )
         if status not in STATUSES:
             raise ValueError(f"{path} row {line_number} has invalid status {status!r}.")
-        raw_price = row.get("price", "").strip()
         if status == "missing":
             if raw_price:
                 raise ValueError(
@@ -459,7 +470,16 @@ def load_monthly_prices(path, sources, timestamps):
                 "method",
             ):
                 _required(row, column, path, line_number)
-        prices[key] = MonthlyPrice(source_id, month, price, unit, category, status)
+        for applicable_month in matching_months:
+            key = (source_id, applicable_month)
+            if key in prices:
+                raise ValueError(
+                    f"{path} contains duplicate source-month record "
+                    f"{source_id}/{applicable_month}."
+                )
+            prices[key] = MonthlyPrice(
+                source_id, applicable_month, price, unit, category, status
+            )
     expected_keys = {
         (source_id, month) for source_id in sources for month in months
     }

@@ -24,14 +24,13 @@ The input directory has four required CSV files plus an optional scenario file:
 - `source_config.csv`: configured source ID, technology, supply type, price
   unit, power capacity, dispatch order, and (for an onsite diesel generator)
   fuel consumption in L/kWh and inventory in litres.
-- `monthly_prices.csv`: one row per configured source and each calendar month
-  in the hourly horizon. Electricity prices are RMB/kWh; diesel fuel prices
-  are RMB/litre. Price category distinguishes customer purchase price,
-  generator selling price, fuel price, estimated generation cost/LCOE, and
-  explicit user assumption. Negative electricity prices are valid. Missing
-  prices must be recorded with a blank value and `status=missing`; the
-  simulator errors if it would use that source rather than treating the price
-  as zero.
+- `monthly_prices.csv`: one row per configured source and calendar month, with
+  months recorded as `01` through `12` and no year. This monthly profile repeats
+  for each year in the horizon. Its columns are `source_id`, `month`, `price`,
+  and `unit`. Electricity prices are RMB/kWh; diesel fuel prices are RMB/litre.
+  Negative electricity prices are valid. Missing prices must be recorded with a
+  blank value; the simulator errors if it would use that source rather than
+  treating the price as zero.
 - `hourly_availability.csv`: hourly timestamp, source ID, available kWh, and
   protected IT demand. This separate profile constrains source delivery in
   addition to configured capacity. Set onsite PV output to zero at night.
@@ -95,16 +94,15 @@ cp -R examples/synthetic /tmp/my-energy-inputs
 python scheduler.py --data-dir /tmp/my-energy-inputs
 ```
 
-Use `data/` as a template for source-derived records. Those CSVs are
-intentionally empty because official source pages could not be fetched during
-this work; see [`data/README.md`](data/README.md) for candidate authorities,
-data gaps, boundaries, and provenance requirements. Do not fill gaps with a
-retail tariff labeled as a technology price or present assumptions as
-observations. If a verified fixed-price contract is repeated month to month,
-record the supporting source; otherwise label repeated values as a hypothetical
-scenario assumption. A monthly diesel value derived from effective-date price
-notices must state its day-weighted method and remains distinct from an actual
-transaction price.
+Use `data/` as a template for source-derived records; see
+[`data/README.md`](data/README.md) for candidate authorities, data gaps,
+boundaries, and provenance requirements. Do not fill gaps with a retail tariff
+labeled as a technology price or present assumptions as observations. If a
+verified fixed-price contract is repeated month to month, retain its supporting
+source outside the compact price table; otherwise treat repeated values as a
+hypothetical scenario assumption. A monthly diesel value derived from
+effective-date price notices must use a day-weighted method and remains distinct
+from an actual transaction price.
 
 Outputs are written to `results/`. Run automated tests with:
 
