@@ -1,15 +1,17 @@
 # Data provenance and limitations
 
 These CSVs contain user-provided assumptions and explicit data gaps, not a
-complete set of verified market prices or emissions factors. The price data
-cover 2025–2026. The 2025 wind prices in `monthly_prices.csv` are user-provided
-values converted from 元/MWh to RMB/kWh; their provenance and method are
-recorded in each row, but they are not independently verified. The onsite-solar
-prices are unweighted averages of the user-provided Shandong, Shanxi, and
-Sichuan values, converted from RMB/MWh to RMB/kWh. They are not independently
-verified or Shanghai-specific. Nuclear prices for 2026 are the user-provided
-0.3932 RMB/kWh assumption for every month, not independently verified. The
-2025 aggregate estimated weighted fuel costs are recorded separately in
+complete set of verified market prices or emissions factors. Monthly prices
+cover 2025–2026. The 2025 wind prices are user-provided values converted from
+元/MWh to RMB/kWh; their provenance and method are recorded in each row, but
+they are not independently verified. The onsite-solar prices are unweighted
+averages of the user-provided Shandong, Shanxi, and Sichuan values, converted
+from RMB/MWh to RMB/kWh; they are not independently verified or
+Shanghai-specific. The 2025 natural-gas-fired prices are user-provided
+estimates with unspecified estimation method and geography, not verified
+market prices. Nuclear prices for 2026 are the user-provided 0.3932 RMB/kWh
+assumption for every month; 2025 nuclear prices remain missing. The 2025
+aggregate estimated weighted fuel costs are recorded separately in
 `estimated_weighted_fuel_cost.csv`; their weighting method and geography are
 unspecified, so they are not source-specific dispatch prices. Other
 source-specific prices remain blank with `status=missing`; this is a missing

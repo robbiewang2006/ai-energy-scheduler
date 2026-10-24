@@ -219,6 +219,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             solar_prices = [
                 row for row in csv.DictReader(file)
                 if row["source_id"] == "onsite_solar"
+                and row["month"].startswith("2025-")
             ]
 
         expected_prices = [
@@ -240,7 +241,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             zip(solar_prices, expected_prices), start=1
         ):
             with self.subTest(month=row["month"]):
-                self.assertEqual(row["month"], f"2026-{month_number:02d}")
+                self.assertEqual(row["month"], f"2025-{month_number:02d}")
                 self.assertEqual(row["applicable_period"], row["month"])
                 self.assertAlmostEqual(float(row["price"]), expected_price)
                 self.assertEqual(row["unit"], "RMB/kWh")
@@ -251,6 +252,34 @@ class SolarMarketPriceDataTests(unittest.TestCase):
                 self.assertEqual(row["status"], "derived")
                 self.assertEqual(
                     row["price_category"], "explicit_user_assumption"
+                )
+                self.assertIn("not independently verified", row["notes"])
+
+    def test_2025_natural_gas_prices_are_transcribed_as_assumptions(self):
+        path = Path(__file__).parent.parent / "data" / "monthly_prices.csv"
+        with path.open(newline="", encoding="utf-8") as file:
+            gas_prices = [
+                row for row in csv.DictReader(file)
+                if row["source_id"] == "natural_gas_fired"
+                and row["month"].startswith("2025-")
+            ]
+
+        expected_prices = [0.9676] * 4 + [0.9514] * 8
+        self.assertEqual(len(gas_prices), 12)
+        for month_number, (row, expected_price) in enumerate(
+            zip(gas_prices, expected_prices), start=1
+        ):
+            with self.subTest(month=row["month"]):
+                self.assertEqual(row["month"], f"2025-{month_number:02d}")
+                self.assertEqual(row["applicable_period"], row["month"])
+                self.assertEqual(float(row["price"]), expected_price)
+                self.assertEqual(row["unit"], "RMB/kWh")
+                self.assertEqual(row["price_category"], "explicit_user_assumption")
+                self.assertEqual(row["status"], "assumption")
+                self.assertEqual(
+                    row["source_url"],
+                    "https://github.com/user-attachments/assets/"
+                    "0970dec9-0910-4975-96bb-b03de1f2351c",
                 )
                 self.assertIn("not independently verified", row["notes"])
 
@@ -267,7 +296,9 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         self.assertEqual(set(sources), expected_sources)
         self.assertFalse(any(source.supply_type == "grid" for source in sources.values()))
         timestamps = [
-            datetime(2026, month, 1) for month in range(1, 13)
+            datetime(year, month, 1)
+            for year in (2025, 2026)
+            for month in range(1, 13)
         ]
         prices = load_monthly_prices(
             root / "data" / "monthly_prices.csv", sources, timestamps
@@ -275,8 +306,17 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         factors = load_emission_factors(
             root / "data" / "emission_factors.csv", sources
         )
-        self.assertEqual(len(prices), len(expected_sources) * 12 + 12)
+        self.assertEqual(len(prices), len(expected_sources) * 24)
         self.assertEqual(set(factors), expected_sources)
+        self.assertTrue(
+            all(
+                prices[(source_id, f"2025-{month:02d}")].price is None
+                for source_id in expected_sources - {
+                    "onsite_solar", "wind", "natural_gas_fired"
+                }
+                for month in range(1, 13)
+            )
+        )
         self.assertTrue(
             all(
                 prices[(source_id, f"2026-{month:02d}")].price is None
@@ -315,6 +355,9 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             {row["source_id"] for row in prices},
             expected_sources,
         )
+        self.assertTrue(all(
+            row["month"].startswith(("2025-", "2026-")) for row in prices
+        ))
         self.assertEqual(
             {row["source_id"] for row in factors},
             expected_sources,
@@ -322,8 +365,13 @@ class SolarMarketPriceDataTests(unittest.TestCase):
         self.assertTrue(all(
             row["status"] == "missing"
             for row in prices
-            if row["month"].startswith("2026-")
-            and row["source_id"] not in {"onsite_solar", "nuclear"}
+            if row["source_id"] == "nuclear"
+            and row["month"].startswith("2025-")
+        ))
+        self.assertTrue(all(
+            row["status"] == "missing"
+            for row in prices
+            if row["source_id"] == "onsite_diesel"
         ))
         self.assertTrue(all(row["status"] == "assumption" for row in factors))
 
@@ -333,6 +381,7 @@ class SolarMarketPriceDataTests(unittest.TestCase):
             nuclear_prices = [
                 row for row in csv.DictReader(file)
                 if row["source_id"] == "nuclear"
+                and row["month"].startswith("2026-")
             ]
 
         self.assertEqual(len(nuclear_prices), 12)
